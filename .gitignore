@@ -1,0 +1,41 @@
+# Visual Studio & MSVC files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+x64/
+Debug/
+Release/
+
+# CMake build directories
+build/
+out/
+CMakeSettings.json
+
+# Qt generated files
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qmlc
+*.jsc
+
+# Compiled binaries
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Operating System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary & Log files
+*.log
+*.tmp
+

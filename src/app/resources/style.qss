@@ -1,0 +1,79 @@
+/* MATForge Application Style */
+
+QMainWindow {
+    background-color: #f0f0f0;
+}
+
+QToolBar {
+    background: #e6e6e6;
+    border-bottom: 1px solid #c0c0c0;
+    spacing: 6px;
+    padding: 4px;
+}
+
+QToolBar QToolButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-weight: 500;
+}
+
+QToolBar QToolButton:hover {
+    background: #d8d8d8;
+    border: 1px solid #b0b0b0;
+}
+
+QToolBar QToolButton:pressed {
+    background: #c8c8c8;
+}
+
+QDockWidget {
+    font-weight: bold;
+    titlebar-close-icon: url(close.png);
+    titlebar-normal-icon: url(float.png);
+}
+
+QDockWidget::title {
+    background: #e0e0e0;
+    padding: 6px;
+    border: 1px solid #d0d0d0;
+}
+
+QTabWidget::pane {
+    border: 1px solid #c0c0c0;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background: #e4e4e4;
+    border: 1px solid #c0c0c0;
+    padding: 6px 12px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background: #ffffff;
+    border-bottom-color: #ffffff;
+    font-weight: bold;
+}
+
+QTableView, QTreeView, QListWidget {
+    background-color: #ffffff;
+    alternate-background-color: #f7f9fa;
+    border: 1px solid #d0d0d0;
+    gridline-color: #e5e5e5;
+}
+
+QHeaderView::section {
+    background-color: #eaeaea;
+    padding: 4px;
+    border: 1px solid #d0d0d0;
+    font-weight: 600;
+}
+
+QStatusBar {
+    background: #e8e8e8;
+    border-top: 1px solid #c8c8c8;
+}
+
