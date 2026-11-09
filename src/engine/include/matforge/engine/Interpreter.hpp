@@ -54,6 +54,17 @@ public:
     void setCloseFigureCallback(CloseFigureCallback cb) { closeFigureCallback_ = std::move(cb); }
     void setClearFigureCallback(ClearFigureCallback cb) { clearFigureCallback_ = std::move(cb); }
 
+    const PlotCallback& plotCallback() const { return plotCallback_; }
+    const HoldCallback& holdCallback() const { return holdCallback_; }
+    const GridCallback& gridCallback() const { return gridCallback_; }
+    const TitleCallback& titleCallback() const { return titleCallback_; }
+    const LabelCallback& labelCallback() const { return labelCallback_; }
+    const LegendCallback& legendCallback() const { return legendCallback_; }
+    const SubplotCallback& subplotCallback() const { return subplotCallback_; }
+    const ClearScreenCallback& clearScreenCallback() const { return clearScreenCallback_; }
+    const CloseFigureCallback& closeFigureCallback() const { return closeFigureCallback_; }
+    const ClearFigureCallback& clearFigureCallback() const { return clearFigureCallback_; }
+
 private:
     matforge::core::Value evaluate(const Expr& expr);
     matforge::core::Value evaluateNumber(const NumberExpr& expr);

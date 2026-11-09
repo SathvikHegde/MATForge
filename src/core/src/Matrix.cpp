@@ -1,4 +1,7 @@
 #include "matforge/core/Matrix.hpp"
+#include "matforge/core/SignalProcessing.hpp"
+#include "matforge/core/CsvIO.hpp"
+#include "matforge/core/RandomUtils.hpp"
 
 #include <stdexcept>
 #include <sstream>
@@ -764,45 +767,20 @@ Matrix Matrix::chol() const {
 // Random Numbers & Statistics (Phase 2)
 // =========================================================================
 
-namespace {
-std::mt19937_64& getRng() {
-    static std::mt19937_64 rng(1337);
-    return rng;
-}
-} // namespace
-
 void Matrix::setSeed(unsigned int seed) {
-    getRng().seed(seed);
+    random::setSeed(seed);
 }
 
 Matrix Matrix::rand(std::size_t rows, std::size_t cols) {
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-    Matrix m(rows, cols);
-    for (double& v : m.rawData()) {
-        v = dist(getRng());
-    }
-    return m;
+    return random::rand(rows, cols);
 }
 
 Matrix Matrix::randn(std::size_t rows, std::size_t cols) {
-    std::normal_distribution<double> dist(0.0, 1.0);
-    Matrix m(rows, cols);
-    for (double& v : m.rawData()) {
-        v = dist(getRng());
-    }
-    return m;
+    return random::randn(rows, cols);
 }
 
 Matrix Matrix::randi(int imax, std::size_t rows, std::size_t cols) {
-    if (imax < 1) {
-        throw std::invalid_argument("imax must be >= 1 for randi.");
-    }
-    std::uniform_int_distribution<int> dist(1, imax);
-    Matrix m(rows, cols);
-    for (double& v : m.rawData()) {
-        v = static_cast<double>(dist(getRng()));
-    }
-    return m;
+    return random::randi(imax, rows, cols);
 }
 
 double Matrix::variance() const {
@@ -838,165 +816,15 @@ double Matrix::median() const {
 // =========================================================================
 
 Matrix Matrix::conv(const Matrix& u, const Matrix& v) {
-    if (!u.isVector() || !v.isVector()) {
-        throw std::invalid_argument("conv arguments must be vectors.");
-    }
-    if (u.empty() || v.empty()) {
-        return Matrix();
-    }
-    std::size_t n = u.size() + v.size() - 1;
-    std::vector<double> out(n, 0.0);
-    const auto& uData = u.rawData();
-    const auto& vData = v.rawData();
-    for (std::size_t i = 0; i < uData.size(); ++i) {
-        for (std::size_t j = 0; j < vData.size(); ++j) {
-            out[i + j] += uData[i] * vData[j];
-        }
-    }
-    if (u.rows() == 1) {
-        return Matrix(1, n, out);
-    } else {
-        return Matrix(n, 1, out);
-    }
+    return signal::conv(u, v);
 }
-
-namespace {
-void cooleyTukeyFFT(std::vector<std::complex<double>>& a, bool inverse) {
-    std::size_t n = a.size();
-    if (n <= 1) return;
-
-    for (std::size_t i = 1, j = 0; i < n; ++i) {
-        std::size_t bit = n >> 1;
-        for (; j & bit; bit >>= 1) {
-            j ^= bit;
-        }
-        j ^= bit;
-        if (i < j) {
-            std::swap(a[i], a[j]);
-        }
-    }
-
-    const double pi = 3.14159265358979323846;
-    for (std::size_t len = 2; len <= n; len <<= 1) {
-        double ang = 2.0 * pi / static_cast<double>(len) * (inverse ? 1.0 : -1.0);
-        std::complex<double> wlen(std::cos(ang), std::sin(ang));
-        for (std::size_t i = 0; i < n; i += len) {
-            std::complex<double> w(1.0, 0.0);
-            for (std::size_t j = 0; j < len / 2; ++j) {
-                std::complex<double> u = a[i + j];
-                std::complex<double> v = a[i + j + len / 2] * w;
-                a[i + j] = u + v;
-                a[i + j + len / 2] = u - v;
-                w *= wlen;
-            }
-        }
-    }
-
-    if (inverse) {
-        for (std::size_t i = 0; i < n; ++i) {
-            a[i] /= static_cast<double>(n);
-        }
-    }
-}
-
-void directDFT(const std::vector<std::complex<double>>& in, std::vector<std::complex<double>>& out, bool inverse) {
-    std::size_t n = in.size();
-    out.assign(n, std::complex<double>(0.0, 0.0));
-    const double pi = 3.14159265358979323846;
-    for (std::size_t k = 0; k < n; ++k) {
-        for (std::size_t j = 0; j < n; ++j) {
-            double angle = 2.0 * pi * static_cast<double>(k * j) / static_cast<double>(n) * (inverse ? 1.0 : -1.0);
-            std::complex<double> twiddle(std::cos(angle), std::sin(angle));
-            out[k] += in[j] * twiddle;
-        }
-        if (inverse) {
-            out[k] /= static_cast<double>(n);
-        }
-    }
-}
-
-void computeFFT(std::vector<std::complex<double>>& data, bool inverse) {
-    std::size_t n = data.size();
-    if (n <= 1) return;
-    bool isPowerOfTwo = (n & (n - 1)) == 0;
-    if (isPowerOfTwo) {
-        cooleyTukeyFFT(data, inverse);
-    } else {
-        std::vector<std::complex<double>> out;
-        directDFT(data, out, inverse);
-        data = std::move(out);
-    }
-}
-} // namespace
 
 Matrix Matrix::fft() const {
-    if (empty()) return Matrix();
-    std::size_t n = size();
-    std::vector<std::complex<double>> cdata(n);
-    if (cols_ == 2 && rows_ > 1) {
-        for (std::size_t i = 0; i < rows_; ++i) {
-            cdata[i] = std::complex<double>((*this)(i, 0), (*this)(i, 1));
-        }
-        n = rows_;
-        cdata.resize(n);
-    } else {
-        for (std::size_t i = 0; i < n; ++i) {
-            cdata[i] = std::complex<double>(data_[i], 0.0);
-        }
-    }
-
-    computeFFT(cdata, false);
-
-    Matrix result(n, 2);
-    for (std::size_t i = 0; i < n; ++i) {
-        result(i, 0) = cdata[i].real();
-        result(i, 1) = cdata[i].imag();
-    }
-    return result;
+    return signal::fft(*this);
 }
 
 Matrix Matrix::ifft() const {
-    if (empty()) return Matrix();
-    std::size_t n = rows_;
-    std::vector<std::complex<double>> cdata;
-
-    if (cols_ == 2) {
-        cdata.resize(rows_);
-        for (std::size_t i = 0; i < rows_; ++i) {
-            cdata[i] = std::complex<double>((*this)(i, 0), (*this)(i, 1));
-        }
-    } else {
-        n = size();
-        cdata.resize(n);
-        for (std::size_t i = 0; i < n; ++i) {
-            cdata[i] = std::complex<double>(data_[i], 0.0);
-        }
-    }
-
-    computeFFT(cdata, true);
-
-    bool hasImag = false;
-    for (const auto& c : cdata) {
-        if (std::abs(c.imag()) > 1e-9) {
-            hasImag = true;
-            break;
-        }
-    }
-
-    if (!hasImag) {
-        Matrix result(n, 1);
-        for (std::size_t i = 0; i < n; ++i) {
-            result(i, 0) = cdata[i].real();
-        }
-        return result;
-    } else {
-        Matrix result(n, 2);
-        for (std::size_t i = 0; i < n; ++i) {
-            result(i, 0) = cdata[i].real();
-            result(i, 1) = cdata[i].imag();
-        }
-        return result;
-    }
+    return signal::ifft(*this);
 }
 
 // =========================================================================
@@ -1004,63 +832,11 @@ Matrix Matrix::ifft() const {
 // =========================================================================
 
 Matrix Matrix::readCSV(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file for reading: " + path);
-    }
-    std::vector<std::vector<double>> rows;
-    std::string line;
-    while (std::getline(file, line)) {
-        auto start = line.find_first_not_of(" \t\r\n");
-        if (start == std::string::npos) continue;
-        if (line[start] == '#' || line[start] == '%') continue;
-
-        for (char& ch : line) {
-            if (ch == ',' || ch == ';' || ch == '\t') ch = ' ';
-        }
-        std::stringstream ss(line);
-        std::vector<double> row;
-        double val;
-        while (ss >> val) {
-            row.push_back(val);
-        }
-        if (!row.empty()) {
-            rows.push_back(std::move(row));
-        }
-    }
-    if (rows.empty()) {
-        return Matrix();
-    }
-    std::size_t numRows = rows.size();
-    std::size_t numCols = rows[0].size();
-    std::vector<double> flattened;
-    flattened.reserve(numRows * numCols);
-    for (const auto& r : rows) {
-        if (r.size() != numCols) {
-            throw std::runtime_error("Inconsistent column count in CSV file.");
-        }
-        for (double d : r) {
-            flattened.push_back(d);
-        }
-    }
-    return Matrix(numRows, numCols, flattened);
+    return io::readCSV(path);
 }
 
 void Matrix::writeCSV(const std::string& path, char delimiter) const {
-    std::ofstream file(path);
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file for writing: " + path);
-    }
-    file << std::fixed << std::setprecision(10);
-    for (std::size_t r = 0; r < rows_; ++r) {
-        for (std::size_t c = 0; c < cols_; ++c) {
-            file << (*this)(r, c);
-            if (c + 1 < cols_) {
-                file << delimiter;
-            }
-        }
-        file << "\n";
-    }
+    io::writeCSV(*this, path, delimiter);
 }
 
 std::string Matrix::toString(int precision) const {

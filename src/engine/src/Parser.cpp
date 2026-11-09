@@ -119,9 +119,26 @@ Program Parser::parse() {
     return program;
 }
 
+void Parser::error(const std::string& message) const {
+    const Token& tok = peek();
+    throw std::runtime_error("Syntax error at line " + std::to_string(tok.line) +
+                             ", col " + std::to_string(tok.column) + ": " + message);
+}
+
 std::unique_ptr<Statement> Parser::parseStatement() {
     consumeSeparators();
     if (isAtEnd()) return nullptr;
+
+    const Token& startTok = peek();
+    auto stmt = parseStatementInternal();
+    if (stmt) {
+        stmt->line = startTok.line;
+        stmt->column = startTok.column;
+    }
+    return stmt;
+}
+
+std::unique_ptr<Statement> Parser::parseStatementInternal() {
 
     // 1. Control flow: For loop
     if (check(TokenType::For)) {
@@ -175,10 +192,10 @@ std::unique_ptr<Statement> Parser::parseStatement() {
             }
         }
         if (!match(TokenType::RBracket)) {
-            throw std::runtime_error("Expected ']' in multi-assignment.");
+            error("Expected ']' in multi-assignment.");
         }
         if (!match(TokenType::Assign)) {
-            throw std::runtime_error("Expected '=' in multi-assignment.");
+            error("Expected '=' in multi-assignment.");
         }
         auto expr = parseExpression();
         bool suppress = match(TokenType::Semicolon);
@@ -202,10 +219,10 @@ std::unique_ptr<Statement> Parser::parseStatement() {
             } while (match(TokenType::Comma));
         }
         if (!match(TokenType::RParen)) {
-            throw std::runtime_error("Expected ')' after subscript indices.");
+            error("Expected ')' after subscript indices.");
         }
         if (!match(TokenType::Assign)) {
-            throw std::runtime_error("Expected '=' in subscript assignment.");
+            error("Expected '=' in subscript assignment.");
         }
         auto expr = parseExpression();
         bool suppress = match(TokenType::Semicolon);
@@ -252,17 +269,17 @@ std::unique_ptr<Statement> Parser::parseStatement() {
 std::unique_ptr<Statement> Parser::parseForStatement() {
     advance(); // consume 'for'
     if (!check(TokenType::Identifier)) {
-        throw std::runtime_error("Expected variable name after 'for'.");
+        error("Expected variable name after 'for'.");
     }
     std::string varName = advance().text;
     if (!match(TokenType::Assign)) {
-        throw std::runtime_error("Expected '=' after for loop variable.");
+        error("Expected '=' after for loop variable.");
     }
     auto range = parseExpression();
     consumeSeparators();
     auto body = parseBlockUntil({TokenType::End});
     if (!match(TokenType::End)) {
-        throw std::runtime_error("Expected 'end' at end of for loop.");
+        error("Expected 'end' at end of for loop.");
     }
     match(TokenType::Semicolon);
     return std::make_unique<ForStmt>(varName, std::move(range), std::move(body));
@@ -274,7 +291,7 @@ std::unique_ptr<Statement> Parser::parseWhileStatement() {
     consumeSeparators();
     auto body = parseBlockUntil({TokenType::End});
     if (!match(TokenType::End)) {
-        throw std::runtime_error("Expected 'end' at end of while loop.");
+        error("Expected 'end' at end of while loop.");
     }
     match(TokenType::Semicolon);
     return std::make_unique<WhileStmt>(std::move(cond), std::move(body));
@@ -302,7 +319,7 @@ std::unique_ptr<Statement> Parser::parseIfStatement() {
     }
 
     if (!match(TokenType::End)) {
-        throw std::runtime_error("Expected 'end' at end of if statement.");
+        error("Expected 'end' at end of if statement.");
     }
     match(TokenType::Semicolon);
     return std::make_unique<IfStmt>(std::move(branches), std::move(elseBody));
@@ -322,10 +339,10 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement() {
             match(TokenType::Comma);
         }
         if (!match(TokenType::RBracket) || !match(TokenType::Assign)) {
-            throw std::runtime_error("Expected '] =' after function return parameter list.");
+            error("Expected '] =' after function return parameter list.");
         }
         if (!check(TokenType::Identifier)) {
-            throw std::runtime_error("Expected function name after return parameters.");
+            error("Expected function name after return parameters.");
         }
         functionName = advance().text;
     } else if (check(TokenType::Identifier)) {
@@ -334,7 +351,7 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement() {
             // function a = f(...)
             returnParams.push_back(firstId);
             if (!check(TokenType::Identifier)) {
-                throw std::runtime_error("Expected function name after '=' in function declaration.");
+                error("Expected function name after '=' in function declaration.");
             }
             functionName = advance().text;
         } else {
@@ -342,7 +359,7 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement() {
             functionName = firstId;
         }
     } else {
-        throw std::runtime_error("Expected function name or return list in function declaration.");
+        error("Expected function name or return list in function declaration.");
     }
 
     // Parameter list: (p1, p2, ...)
@@ -356,7 +373,7 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement() {
             } while (match(TokenType::Comma));
         }
         if (!match(TokenType::RParen)) {
-            throw std::runtime_error("Expected ')' after function parameter list.");
+            error("Expected ')' after function parameter list.");
         }
     }
 
@@ -526,7 +543,7 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             if (auto varExpr = dynamic_cast<VariableExpr*>(expr.get())) {
                 expr = std::make_unique<CallExpr>(varExpr->name(), std::move(args));
             } else {
-                throw std::runtime_error("Invalid call expression.");
+                error("Invalid call expression.");
             }
         } else {
             break;
@@ -564,27 +581,27 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             if (!check(TokenType::RParen)) {
                 do {
                     if (!check(TokenType::Identifier)) {
-                        throw std::runtime_error("Expected parameter name in anonymous function.");
+                        error("Expected parameter name in anonymous function.");
                     }
                     paramNames.push_back(advance().text);
                 } while (match(TokenType::Comma));
             }
             if (!match(TokenType::RParen)) {
-                throw std::runtime_error("Expected ')' after anonymous function parameters.");
+                error("Expected ')' after anonymous function parameters.");
             }
             auto body = parseExpression();
             return std::make_unique<FunctionHandleExpr>(std::move(paramNames), std::move(body));
         } else if (match(TokenType::Identifier)) {
             return std::make_unique<FunctionHandleExpr>(previous().text);
         } else {
-            throw std::runtime_error("Expected '(' or function name after '@'.");
+            error("Expected '(' or function name after '@'.");
         }
     }
 
     if (match(TokenType::LParen)) {
         auto expr = parseExpression();
         if (!match(TokenType::RParen)) {
-            throw std::runtime_error("Expected ')' after expression.");
+            error("Expected ')' after expression.");
         }
         return expr;
     }
@@ -593,7 +610,7 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         return parseMatrixLiteral();
     }
 
-    throw std::runtime_error("Unexpected token in expression: " + peek().text);
+    error("Unexpected token in expression: " + peek().text);
 }
 
 std::unique_ptr<Expr> Parser::parseMatrixLiteral() {
@@ -620,7 +637,7 @@ std::unique_ptr<Expr> Parser::parseMatrixLiteral() {
     }
 
     if (!match(TokenType::RBracket)) {
-        throw std::runtime_error("Expected ']' at end of matrix literal.");
+        error("Expected ']' at end of matrix literal.");
     }
 
     return std::make_unique<MatrixLiteralExpr>(std::move(rows));

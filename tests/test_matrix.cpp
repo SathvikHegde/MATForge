@@ -1,5 +1,8 @@
 #include "matforge/core/Matrix.hpp"
 #include "matforge/core/MathUtils.hpp"
+#include "matforge/core/SignalProcessing.hpp"
+#include "matforge/core/CsvIO.hpp"
+#include "matforge/core/RandomUtils.hpp"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -181,6 +184,20 @@ void testPhase2SignalAndIO() {
         }
     }
     std::remove(testPath.c_str());
+
+    // Direct standalone module tests
+    Matrix wDirect = signal::conv(u, v);
+    assert(wDirect.size() == 4 && wDirect(0, 1) == 13.0);
+    Matrix yDirect = signal::fft(sig);
+    assert(yDirect.rows() == 4 && yDirect.cols() == 2);
+    Matrix recDirect = signal::ifft(yDirect);
+    assert(recDirect.size() == 4 && std::abs(recDirect.rawData()[0] - 1.0) < 1e-8);
+
+    std::string directCsv = "temp_direct_io.csv";
+    io::writeCSV(original, directCsv);
+    Matrix readDirect = io::readCSV(directCsv);
+    assert(readDirect.rows() == 2 && readDirect.cols() == 3);
+    std::remove(directCsv.c_str());
 
     std::cout << "[PASS] Signal processing (conv, FFT, IFFT) and CSV I/O\n";
 }

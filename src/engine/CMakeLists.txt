@@ -5,11 +5,13 @@ add_library(matforge_engine
     include/matforge/engine/Parser.hpp
     include/matforge/engine/Workspace.hpp
     include/matforge/engine/Interpreter.hpp
+    include/matforge/engine/BuiltinRegistry.hpp
     src/Token.cpp
     src/Lexer.cpp
     src/Parser.cpp
     src/Workspace.cpp
     src/Interpreter.cpp
+    src/BuiltinRegistry.cpp
 )
 
 target_include_directories(matforge_engine

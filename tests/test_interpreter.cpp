@@ -498,6 +498,23 @@ void testPhase4() {
     std::cout << "[PASS] Phase 4 (Function Handles, solve, linsolve, fzero, fsolve, integral, diff, gradient, trapz, cumtrapz, fminsearch, ode45, ode23)\n";
 }
 
+void testDiagnosticsAndRefactoring() {
+    matforge::engine::Interpreter interp;
+
+    // 1. Syntax Error Diagnostic
+    auto synRes = interp.execute("x = [1, 2, 3");
+    assert(!synRes.success);
+    assert(synRes.errorMessage.find("Syntax error at line") != std::string::npos);
+    assert(synRes.errorMessage.find("col") != std::string::npos);
+
+    // 2. Runtime Error Diagnostic
+    auto rtRes = interp.execute("A = [1, 2; 3, 4];\nb = [1; 2; 3];\nx = A * b;");
+    assert(!rtRes.success);
+    assert(rtRes.errorMessage.find("Line 3, col 1:") != std::string::npos);
+
+    std::cout << "[PASS] Diagnostics and Error Localization (Line & Column)\n";
+}
+
 int main() {
     std::cout << "Running Interpreter unit tests...\n";
     testAssignmentsAndMath();
@@ -509,6 +526,7 @@ int main() {
     testPhase2Interpreter();
     testPhase3GraphicsCommands();
     testPhase4();
+    testDiagnosticsAndRefactoring();
     std::cout << "All Interpreter unit tests passed!\n";
     return 0;
 }

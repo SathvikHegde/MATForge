@@ -25,6 +25,8 @@ private:
     bool matchAny(std::initializer_list<TokenType> types);
 
     std::unique_ptr<Statement> parseStatement();
+    std::unique_ptr<Statement> parseStatementInternal();
+    [[noreturn]] void error(const std::string& message) const;
     std::unique_ptr<Statement> parseForStatement();
     std::unique_ptr<Statement> parseWhileStatement();
     std::unique_ptr<Statement> parseIfStatement();
