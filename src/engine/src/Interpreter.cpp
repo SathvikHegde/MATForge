@@ -65,6 +65,8 @@ void Interpreter::executeStatement(const Statement& stmt, std::ostringstream& ou
         if (!assignStmt->suppressOutput && !val.isEmpty()) {
             out << assignStmt->variableName() << " =\n\n" << val.formatOutput() << "\n\n";
         }
+    } else if (const auto* multiAssign = dynamic_cast<const MultiAssignmentStmt*>(&stmt)) {
+        executeMultiAssign(*multiAssign, out);
     } else if (const auto* subAssign = dynamic_cast<const SubscriptAssignStmt*>(&stmt)) {
         executeSubscriptAssign(*subAssign, out);
     } else if (const auto* forStmt = dynamic_cast<const ForStmt*>(&stmt)) {
@@ -137,6 +139,22 @@ void Interpreter::executeStatement(const Statement& stmt, std::ostringstream& ou
             if (clearFigureCallback_) {
                 clearFigureCallback_();
             }
+        } else if (cmd == "hold") {
+            bool h = true;
+            if (!cmdStmt->args().empty() && cmdStmt->args()[0] == "off") {
+                h = false;
+            }
+            if (holdCallback_) {
+                holdCallback_(h);
+            }
+        } else if (cmd == "grid") {
+            bool g = true;
+            if (!cmdStmt->args().empty() && cmdStmt->args()[0] == "off") {
+                g = false;
+            }
+            if (gridCallback_) {
+                gridCallback_(g);
+            }
         } else if (cmd == "run") {
             if (cmdStmt->args().empty()) {
                 out << "Usage: run <script.m>\n\n";
@@ -161,6 +179,97 @@ void Interpreter::executeStatement(const Statement& stmt, std::ostringstream& ou
             }
         } else if (cmd == "exit" || cmd == "quit") {
             std::exit(0);
+        }
+    }
+}
+
+void Interpreter::executeMultiAssign(const MultiAssignmentStmt& stmt, std::ostringstream& out) {
+    const auto& targets = stmt.targetVars();
+    if (targets.empty()) return;
+
+    std::vector<matforge::core::Value> returnValues;
+
+    // Check if expr is a CallExpr to a multi-output decomposition or function
+    if (const auto* call = dynamic_cast<const CallExpr*>(&stmt.expr())) {
+        const std::string& name = call->callee();
+        std::vector<matforge::core::Value> args;
+        for (const auto& a : call->args()) {
+            args.push_back(evaluate(*a));
+        }
+
+        if (name == "svd" && !args.empty() && args[0].isMatrix()) {
+            auto [U, S, V] = args[0].toMatrix().svd();
+            returnValues.push_back(matforge::core::Value(U));
+            returnValues.push_back(matforge::core::Value(S));
+            returnValues.push_back(matforge::core::Value(V));
+        } else if (name == "eig" && !args.empty() && args[0].isMatrix()) {
+            auto [V, D] = args[0].toMatrix().eig();
+            returnValues.push_back(matforge::core::Value(V));
+            returnValues.push_back(matforge::core::Value(D));
+        } else if (name == "lu" && !args.empty() && args[0].isMatrix()) {
+            auto [L, U] = args[0].toMatrix().lu();
+            returnValues.push_back(matforge::core::Value(L));
+            returnValues.push_back(matforge::core::Value(U));
+        } else if (name == "qr" && !args.empty() && args[0].isMatrix()) {
+            auto [Q, R] = args[0].toMatrix().qr();
+            returnValues.push_back(matforge::core::Value(Q));
+            returnValues.push_back(matforge::core::Value(R));
+        } else if (workspace_->hasFunction(name)) {
+            // User-defined function with multiple return params
+            auto func = workspace_->getFunction(name);
+            auto localWs = std::make_shared<Workspace>();
+            for (const auto& [fName, fDef] : workspace_->functions()) {
+                localWs->defineFunction(fName, fDef);
+            }
+            for (std::size_t i = 0; i < func->paramNames().size(); ++i) {
+                if (i < args.size()) {
+                    localWs->set(func->paramNames()[i], args[i]);
+                } else {
+                    localWs->set(func->paramNames()[i], matforge::core::Value());
+                }
+            }
+
+            Interpreter localInterp(localWs);
+            localInterp.setPlotCallback(plotCallback_);
+            localInterp.setHoldCallback(holdCallback_);
+            localInterp.setGridCallback(gridCallback_);
+            localInterp.setTitleCallback(titleCallback_);
+            localInterp.setLabelCallback(labelCallback_);
+            localInterp.setLegendCallback(legendCallback_);
+            localInterp.setSubplotCallback(subplotCallback_);
+            localInterp.setClearScreenCallback(clearScreenCallback_);
+            localInterp.setCloseFigureCallback(closeFigureCallback_);
+            localInterp.setClearFigureCallback(clearFigureCallback_);
+
+            std::ostringstream localOut;
+            try {
+                for (const auto& s : func->body()) {
+                    localInterp.executeStatement(*s, localOut);
+                }
+            } catch (const ReturnException&) {
+                // Return executed
+            }
+
+            for (const auto& rParam : func->returnParams()) {
+                if (localWs->has(rParam)) {
+                    returnValues.push_back(localWs->get(rParam));
+                } else {
+                    returnValues.push_back(matforge::core::Value());
+                }
+            }
+        }
+    }
+
+    if (returnValues.empty()) {
+        matforge::core::Value singleVal = evaluate(stmt.expr());
+        returnValues.push_back(singleVal);
+    }
+
+    for (std::size_t i = 0; i < targets.size(); ++i) {
+        matforge::core::Value val = (i < returnValues.size()) ? returnValues[i] : matforge::core::Value();
+        workspace_->set(targets[i], val);
+        if (!stmt.suppressOutput && !val.isEmpty()) {
+            out << targets[i] << " =\n\n" << val.formatOutput() << "\n\n";
         }
     }
 }
@@ -435,7 +544,22 @@ matforge::core::Value Interpreter::evaluateBinary(const BinaryExpr& expr) {
         case BinaryOp::Multiply:
             return left * right;
         case BinaryOp::Divide:
+            if (left.isMatrix() && right.isMatrix()) {
+                return matforge::core::Value(left.toMatrix().rightSolve(right.toMatrix()));
+            }
             return left / right;
+        case BinaryOp::Backslash:
+            if (left.isMatrix() && right.isMatrix()) {
+                return matforge::core::Value(left.toMatrix().solve(right.toMatrix()));
+            }
+            if (left.isDouble() && right.isMatrix()) {
+                return matforge::core::Value(right.toMatrix() / left.toDouble());
+            }
+            if (left.isDouble() && right.isDouble()) {
+                if (left.toDouble() == 0.0) throw std::runtime_error("Division by zero.");
+                return matforge::core::Value(right.toDouble() / left.toDouble());
+            }
+            throw std::runtime_error("Unsupported operands for backslash (\\).");
         case BinaryOp::DotMultiply:
             if (left.isMatrix() && right.isMatrix()) {
                 return matforge::core::Value(left.toMatrix().elementwiseMultiply(right.toMatrix()));
@@ -446,6 +570,18 @@ matforge::core::Value Interpreter::evaluateBinary(const BinaryExpr& expr) {
                 return matforge::core::Value(left.toMatrix().elementwiseDivide(right.toMatrix()));
             }
             return left / right;
+        case BinaryOp::DotBackslash:
+            if (left.isMatrix() && right.isMatrix()) {
+                return matforge::core::Value(right.toMatrix().elementwiseDivide(left.toMatrix()));
+            }
+            if (left.isDouble() && right.isMatrix()) {
+                return matforge::core::Value(right.toMatrix() / left.toDouble());
+            }
+            if (left.isDouble() && right.isDouble()) {
+                if (left.toDouble() == 0.0) throw std::runtime_error("Division by zero.");
+                return matforge::core::Value(right.toDouble() / left.toDouble());
+            }
+            throw std::runtime_error("Unsupported operands for dot-backslash (.\\).");
         case BinaryOp::Power:
         case BinaryOp::DotPower:
             if (left.isMatrix() && right.isDouble()) {
@@ -558,6 +694,12 @@ matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
 
         Interpreter localInterp(localWs);
         localInterp.setPlotCallback(plotCallback_);
+        localInterp.setHoldCallback(holdCallback_);
+        localInterp.setGridCallback(gridCallback_);
+        localInterp.setTitleCallback(titleCallback_);
+        localInterp.setLabelCallback(labelCallback_);
+        localInterp.setLegendCallback(legendCallback_);
+        localInterp.setSubplotCallback(subplotCallback_);
         localInterp.setClearScreenCallback(clearScreenCallback_);
         localInterp.setCloseFigureCallback(closeFigureCallback_);
         localInterp.setClearFigureCallback(clearFigureCallback_);
@@ -614,6 +756,18 @@ matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
     }
     if (name == "abs") {
         if (argValues.size() != 1) throw std::runtime_error("abs requires 1 argument.");
+        if (argValues[0].isMatrix()) {
+            const auto& m = argValues[0].toMatrix();
+            if (m.cols() == 2 && m.rows() > 0) {
+                matforge::core::Matrix mag(m.rows(), 1);
+                for (std::size_t i = 0; i < m.rows(); ++i) {
+                    double r = m(i, 0);
+                    double im = m(i, 1);
+                    mag(i, 0) = std::sqrt(r * r + im * im);
+                }
+                return matforge::core::Value(mag);
+            }
+        }
         return matforge::core::math::abs(argValues[0]);
     }
 
@@ -707,25 +861,272 @@ matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
         return matforge::core::Value(matforge::core::Matrix(1, 2, {1.0, 1.0}));
     }
 
-    // Display & Graphics
+    // Linear Algebra (Phase 2 - Powered by Eigen 5)
+    if (name == "inv") {
+        if (argValues.size() != 1) throw std::runtime_error("inv requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().inverse());
+    }
+    if (name == "pinv") {
+        if (argValues.size() == 1) return matforge::core::Value(argValues[0].toMatrix().pinv());
+        if (argValues.size() == 2) return matforge::core::Value(argValues[0].toMatrix().pinv(argValues[1].toDouble()));
+        throw std::runtime_error("pinv requires 1 or 2 arguments.");
+    }
+    if (name == "rank") {
+        if (argValues.size() == 1) return matforge::core::Value(static_cast<double>(argValues[0].toMatrix().rank()));
+        if (argValues.size() == 2) return matforge::core::Value(static_cast<double>(argValues[0].toMatrix().rank(argValues[1].toDouble())));
+        throw std::runtime_error("rank requires 1 or 2 arguments.");
+    }
+    if (name == "cond") {
+        if (argValues.size() != 1) throw std::runtime_error("cond requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().cond());
+    }
+    if (name == "eig") {
+        if (argValues.size() != 1) throw std::runtime_error("eig requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().eigenvalues());
+    }
+    if (name == "svd") {
+        if (argValues.size() != 1) throw std::runtime_error("svd requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().singularValues());
+    }
+    if (name == "chol") {
+        if (argValues.size() != 1) throw std::runtime_error("chol requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().chol());
+    }
+    if (name == "lu") {
+        if (argValues.size() != 1) throw std::runtime_error("lu requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().lu().first);
+    }
+    if (name == "qr") {
+        if (argValues.size() != 1) throw std::runtime_error("qr requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().qr().first);
+    }
+
+    // Random Number & Matrix Generation (Phase 2)
+    if (name == "rand") {
+        if (argValues.empty()) return matforge::core::Value(matforge::core::Matrix::rand(1, 1)(0, 0));
+        if (argValues.size() == 1) {
+            std::size_t n = static_cast<std::size_t>(argValues[0].toDouble());
+            return matforge::core::Value(matforge::core::Matrix::rand(n, n));
+        }
+        if (argValues.size() == 2) {
+            std::size_t r = static_cast<std::size_t>(argValues[0].toDouble());
+            std::size_t c = static_cast<std::size_t>(argValues[1].toDouble());
+            return matforge::core::Value(matforge::core::Matrix::rand(r, c));
+        }
+        throw std::runtime_error("rand requires 0, 1, or 2 arguments.");
+    }
+    if (name == "randn") {
+        if (argValues.empty()) return matforge::core::Value(matforge::core::Matrix::randn(1, 1)(0, 0));
+        if (argValues.size() == 1) {
+            std::size_t n = static_cast<std::size_t>(argValues[0].toDouble());
+            return matforge::core::Value(matforge::core::Matrix::randn(n, n));
+        }
+        if (argValues.size() == 2) {
+            std::size_t r = static_cast<std::size_t>(argValues[0].toDouble());
+            std::size_t c = static_cast<std::size_t>(argValues[1].toDouble());
+            return matforge::core::Value(matforge::core::Matrix::randn(r, c));
+        }
+        throw std::runtime_error("randn requires 0, 1, or 2 arguments.");
+    }
+    if (name == "randi") {
+        if (argValues.empty()) throw std::runtime_error("randi requires at least 1 argument (imax).");
+        int imax = static_cast<int>(argValues[0].toDouble());
+        if (argValues.size() == 1) {
+            return matforge::core::Value(matforge::core::Matrix::randi(imax, 1, 1)(0, 0));
+        }
+        if (argValues.size() == 2) {
+            std::size_t n = static_cast<std::size_t>(argValues[1].toDouble());
+            return matforge::core::Value(matforge::core::Matrix::randi(imax, n, n));
+        }
+        if (argValues.size() == 3) {
+            std::size_t r = static_cast<std::size_t>(argValues[1].toDouble());
+            std::size_t c = static_cast<std::size_t>(argValues[2].toDouble());
+            return matforge::core::Value(matforge::core::Matrix::randi(imax, r, c));
+        }
+        throw std::runtime_error("randi requires 1, 2, or 3 arguments.");
+    }
+    if (name == "rng") {
+        if (argValues.size() != 1) throw std::runtime_error("rng requires 1 argument (seed).");
+        matforge::core::Matrix::setSeed(static_cast<unsigned int>(argValues[0].toDouble()));
+        return matforge::core::Value();
+    }
+
+    // Statistics (Phase 2)
+    if (name == "std") {
+        if (argValues.size() != 1) throw std::runtime_error("std requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().stdDev());
+    }
+    if (name == "var") {
+        if (argValues.size() != 1) throw std::runtime_error("var requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().variance());
+    }
+    if (name == "median") {
+        if (argValues.size() != 1) throw std::runtime_error("median requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().median());
+    }
+
+    // Signal Processing & Transforms (Phase 2)
+    if (name == "fft") {
+        if (argValues.size() != 1) throw std::runtime_error("fft requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().fft());
+    }
+    if (name == "ifft") {
+        if (argValues.size() != 1) throw std::runtime_error("ifft requires 1 argument.");
+        return matforge::core::Value(argValues[0].toMatrix().ifft());
+    }
+    if (name == "conv") {
+        if (argValues.size() != 2) throw std::runtime_error("conv requires 2 arguments.");
+        return matforge::core::Value(matforge::core::Matrix::conv(argValues[0].toMatrix(), argValues[1].toMatrix()));
+    }
+    if (name == "real") {
+        if (argValues.size() != 1) throw std::runtime_error("real requires 1 argument.");
+        if (argValues[0].isMatrix()) {
+            const auto& m = argValues[0].toMatrix();
+            if (m.cols() == 2 && m.rows() > 0) {
+                return matforge::core::Value(m.submatrix({}, {0}));
+            }
+            return argValues[0];
+        }
+        return argValues[0];
+    }
+    if (name == "imag") {
+        if (argValues.size() != 1) throw std::runtime_error("imag requires 1 argument.");
+        if (argValues[0].isMatrix()) {
+            const auto& m = argValues[0].toMatrix();
+            if (m.cols() == 2 && m.rows() > 0) {
+                return matforge::core::Value(m.submatrix({}, {1}));
+            }
+            return matforge::core::Value(matforge::core::Matrix::zeros(m.rows(), m.cols()));
+        }
+        return matforge::core::Value(0.0);
+    }
+
+    // File I/O (Phase 2)
+    if (name == "readmatrix" || name == "csvread") {
+        if (argValues.size() != 1) throw std::runtime_error(name + " requires a file path string.");
+        std::string path = argValues[0].isString() ? argValues[0].toStringValue() : "";
+        return matforge::core::Value(matforge::core::Matrix::readCSV(path));
+    }
+    if (name == "writematrix") {
+        if (argValues.size() != 2) throw std::runtime_error("writematrix requires 2 arguments: (matrix, filename).");
+        std::string path = argValues[1].isString() ? argValues[1].toStringValue() : "";
+        argValues[0].toMatrix().writeCSV(path);
+        return matforge::core::Value();
+    }
+    if (name == "csvwrite") {
+        if (argValues.size() != 2) throw std::runtime_error("csvwrite requires 2 arguments: (filename, matrix).");
+        std::string path = argValues[0].isString() ? argValues[0].toStringValue() : "";
+        argValues[1].toMatrix().writeCSV(path);
+        return matforge::core::Value();
+    }
+
+    // Display & Graphics (Phase 3)
     if (name == "disp") {
         if (argValues.size() != 1) throw std::runtime_error("disp requires 1 argument.");
         return argValues[0];
     }
-    if (name == "plot") {
-        if (plotCallback_) {
-            if (argValues.size() == 1 && argValues[0].isMatrix()) {
-                const auto& yMat = argValues[0].toMatrix();
-                std::vector<double> x(yMat.size());
-                for (std::size_t i = 0; i < x.size(); ++i) x[i] = static_cast<double>(i + 1);
-                plotCallback_(x, yMat.rawData(), "Figure 1");
-                return matforge::core::Value();
+    if (name == "plot" || name == "bar" || name == "stem") {
+        if (plotCallback_ && !argValues.empty()) {
+            std::vector<double> xData;
+            std::vector<double> yData;
+            std::string fmt;
+
+            if (argValues.size() == 1 && argValues[0].isNumeric()) {
+                auto ym = argValues[0].toMatrix();
+                yData = ym.rawData();
+                xData.resize(yData.size());
+                for (std::size_t i = 0; i < xData.size(); ++i) xData[i] = static_cast<double>(i + 1);
+            } else if (argValues.size() == 2) {
+                if (argValues[0].isNumeric() && argValues[1].isNumeric()) {
+                    xData = argValues[0].toMatrix().rawData();
+                    yData = argValues[1].toMatrix().rawData();
+                } else if (argValues[0].isNumeric() && argValues[1].isString()) {
+                    auto ym = argValues[0].toMatrix();
+                    yData = ym.rawData();
+                    xData.resize(yData.size());
+                    for (std::size_t i = 0; i < xData.size(); ++i) xData[i] = static_cast<double>(i + 1);
+                    fmt = argValues[1].toStringValue();
+                }
+            } else if (argValues.size() >= 3 && argValues[0].isNumeric() && argValues[1].isNumeric() && argValues[2].isString()) {
+                xData = argValues[0].toMatrix().rawData();
+                yData = argValues[1].toMatrix().rawData();
+                fmt = argValues[2].toStringValue();
             }
-            if (argValues.size() == 2 && argValues[0].isMatrix() && argValues[1].isMatrix()) {
-                plotCallback_(argValues[0].toMatrix().rawData(), argValues[1].toMatrix().rawData(), "Figure 1");
-                return matforge::core::Value();
+
+            if (!yData.empty()) {
+                plotCallback_({xData, yData, fmt, name, ""});
             }
         }
+        return matforge::core::Value();
+    }
+    if (name == "subplot") {
+        if (argValues.size() == 3) {
+            int r = static_cast<int>(argValues[0].toDouble());
+            int c = static_cast<int>(argValues[1].toDouble());
+            int p = static_cast<int>(argValues[2].toDouble());
+            if (subplotCallback_) subplotCallback_(r, c, p);
+        } else if (argValues.size() == 1 && argValues[0].toDouble() >= 100) {
+            int val = static_cast<int>(argValues[0].toDouble());
+            int r = val / 100;
+            int c = (val / 10) % 10;
+            int p = val % 10;
+            if (subplotCallback_) subplotCallback_(r, c, p);
+        }
+        return matforge::core::Value();
+    }
+    if (name == "hold") {
+        bool h = true;
+        if (!argValues.empty() && argValues[0].isString()) {
+            std::string s = argValues[0].toStringValue();
+            if (s == "off") h = false;
+        }
+        if (holdCallback_) holdCallback_(h);
+        return matforge::core::Value();
+    }
+    if (name == "grid") {
+        bool g = true;
+        if (!argValues.empty() && argValues[0].isString()) {
+            std::string s = argValues[0].toStringValue();
+            if (s == "off") g = false;
+        }
+        if (gridCallback_) gridCallback_(g);
+        return matforge::core::Value();
+    }
+    if (name == "title") {
+        if (!argValues.empty()) {
+            std::string t = argValues[0].isString() ? argValues[0].toStringValue() : argValues[0].formatOutput();
+            if (titleCallback_) titleCallback_(t);
+        }
+        return matforge::core::Value();
+    }
+    if (name == "xlabel") {
+        if (!argValues.empty()) {
+            std::string l = argValues[0].isString() ? argValues[0].toStringValue() : argValues[0].formatOutput();
+            if (labelCallback_) labelCallback_(l, true);
+        }
+        return matforge::core::Value();
+    }
+    if (name == "ylabel") {
+        if (!argValues.empty()) {
+            std::string l = argValues[0].isString() ? argValues[0].toStringValue() : argValues[0].formatOutput();
+            if (labelCallback_) labelCallback_(l, false);
+        }
+        return matforge::core::Value();
+    }
+    if (name == "legend") {
+        std::vector<std::string> labels;
+        for (const auto& a : argValues) {
+            labels.push_back(a.isString() ? a.toStringValue() : a.formatOutput());
+        }
+        if (legendCallback_) legendCallback_(labels);
+        return matforge::core::Value();
+    }
+    if (name == "close") {
+        if (closeFigureCallback_) closeFigureCallback_();
+        return matforge::core::Value();
+    }
+    if (name == "clf") {
+        if (clearFigureCallback_) clearFigureCallback_();
         return matforge::core::Value();
     }
 

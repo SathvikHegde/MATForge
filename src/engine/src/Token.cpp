@@ -11,9 +11,11 @@ std::string Token::typeName() const {
         case TokenType::Minus: return "-";
         case TokenType::Star: return "*";
         case TokenType::Slash: return "/";
+        case TokenType::Backslash: return "\\";
         case TokenType::Caret: return "^";
         case TokenType::DotStar: return ".*";
         case TokenType::DotSlash: return "./";
+        case TokenType::DotBackslash: return ".\\";
         case TokenType::DotCaret: return ".^";
         case TokenType::Transpose: return "'";
         case TokenType::Assign: return "=";

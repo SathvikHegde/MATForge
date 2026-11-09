@@ -43,6 +43,7 @@ private:
     std::unique_ptr<Expr> parseMatrixLiteral();
 
     bool isSubscriptAssignment() const;
+    bool isMultiAssignment() const;
     void consumeSeparators();
 
     void synchronize();

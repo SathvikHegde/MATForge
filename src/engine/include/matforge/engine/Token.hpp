@@ -16,9 +16,11 @@ enum class TokenType {
     Minus,          // -
     Star,           // *
     Slash,          // /
+    Backslash,      // backslash \ (mldivide)
     Caret,          // ^
     DotStar,        // .*
     DotSlash,       // ./
+    DotBackslash,   // dot-backslash .\ (ldivide)
     DotCaret,       // .^
     Transpose,      // '
     Assign,         // =

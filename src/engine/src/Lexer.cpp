@@ -175,6 +175,11 @@ std::vector<Token> Lexer::tokenize() {
             tokens.push_back(Token{TokenType::DotSlash, "./", 0.0, startLine, startCol});
             continue;
         }
+        if (ch == '.' && peekNext() == '\\') {
+            advance(); advance();
+            tokens.push_back(Token{TokenType::DotBackslash, ".\\", 0.0, startLine, startCol});
+            continue;
+        }
         if (ch == '.' && peekNext() == '^') {
             advance(); advance();
             tokens.push_back(Token{TokenType::DotCaret, ".^", 0.0, startLine, startCol});
@@ -208,6 +213,7 @@ std::vector<Token> Lexer::tokenize() {
             case '-': tokens.push_back(Token{TokenType::Minus, "-", 0.0, startLine, startCol}); break;
             case '*': tokens.push_back(Token{TokenType::Star, "*", 0.0, startLine, startCol}); break;
             case '/': tokens.push_back(Token{TokenType::Slash, "/", 0.0, startLine, startCol}); break;
+            case '\\': tokens.push_back(Token{TokenType::Backslash, "\\", 0.0, startLine, startCol}); break;
             case '^': tokens.push_back(Token{TokenType::Caret, "^", 0.0, startLine, startCol}); break;
             case '=': tokens.push_back(Token{TokenType::Assign, "=", 0.0, startLine, startCol}); break;
             case '<': tokens.push_back(Token{TokenType::Less, "<", 0.0, startLine, startCol}); break;

@@ -7,6 +7,7 @@ add_library(matforge_gui
     include/matforge/gui/FileBrowserWidget.hpp
     include/matforge/gui/CommandHistoryWidget.hpp
     include/matforge/gui/FigureWindow.hpp
+    include/matforge/gui/VariableEditorDialog.hpp
     src/MainWindow.cpp
     src/CommandWindow.cpp
     src/CodeEditor.cpp
@@ -15,6 +16,7 @@ add_library(matforge_gui
     src/FileBrowserWidget.cpp
     src/CommandHistoryWidget.cpp
     src/FigureWindow.cpp
+    src/VariableEditorDialog.cpp
 )
 
 target_include_directories(matforge_gui

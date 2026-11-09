@@ -201,6 +201,190 @@ void testUserFunctions() {
     std::cout << "[PASS] User-defined functions\n";
 }
 
+void testPhase2Interpreter() {
+    matforge::engine::Interpreter interpreter;
+
+    // Linear solve with backslash: A \ b
+    auto res1 = interpreter.execute(
+        "A = [4, 7; 2, 6];\n"
+        "b = [1; 2];\n"
+        "x = A \\ b;\n"
+        "diff = A * x - b;\n"
+    );
+    assert(res1.success);
+    auto diff = interpreter.workspace()->get("diff").toMatrix();
+    assert(std::abs(diff(0, 0)) < 1e-8 && std::abs(diff(1, 0)) < 1e-8);
+
+    // Right solve: B / A
+    auto res2 = interpreter.execute(
+        "B = [3, 5];\n"
+        "X = B / A;\n"
+        "reconB = X * A;\n"
+    );
+    assert(res2.success);
+    auto reconB = interpreter.workspace()->get("reconB").toMatrix();
+    assert(std::abs(reconB(0, 0) - 3.0) < 1e-8);
+    assert(std::abs(reconB(0, 1) - 5.0) < 1e-8);
+
+    // Dot-backslash: A .\ B
+    auto res3 = interpreter.execute(
+        "D1 = [2, 4]; D2 = [6, 12];\n"
+        "div = D1 .\\ D2;\n"
+    );
+    assert(res3.success);
+    auto div = interpreter.workspace()->get("div").toMatrix();
+    assert(div(0, 0) == 3.0 && div(0, 1) == 3.0);
+
+    // Built-in linear algebra functions
+    auto res4 = interpreter.execute(
+        "invA = inv(A);\n"
+        "pA = pinv(A);\n"
+        "r = rank(A);\n"
+        "c = cond(A);\n"
+        "R_chol = chol([4, 2; 2, 5]);\n"
+    );
+    assert(res4.success);
+    assert(interpreter.workspace()->get("r").toDouble() == 2.0);
+    assert(interpreter.workspace()->get("c").toDouble() > 1.0);
+
+    // Multi-Variable Assignment: [U, S, V] = svd(A)
+    auto res5 = interpreter.execute(
+        "[U, S, V] = svd(A);\n"
+        "[Q, R] = qr(A);\n"
+        "[L, U_lu] = lu(A);\n"
+    );
+    assert(res5.success);
+    assert(interpreter.workspace()->has("U"));
+    assert(interpreter.workspace()->has("S"));
+    assert(interpreter.workspace()->has("V"));
+    assert(interpreter.workspace()->has("Q"));
+    assert(interpreter.workspace()->has("R"));
+    assert(interpreter.workspace()->has("L"));
+    assert(interpreter.workspace()->has("U_lu"));
+
+    // Random & Statistics
+    auto res6 = interpreter.execute(
+        "rng(42);\n"
+        "Rnd = rand(3, 3);\n"
+        "stdev = std(1:5);\n"
+        "med = median([5, 1, 9, 3, 7]);\n"
+    );
+    assert(res6.success);
+    assert(std::abs(interpreter.workspace()->get("stdev").toDouble() - std::sqrt(2.5)) < 1e-8);
+    assert(interpreter.workspace()->get("med").toDouble() == 5.0);
+
+    // Signal processing: conv, fft, ifft
+    auto res7 = interpreter.execute(
+        "sig = [1, 2, 3, 4];\n"
+        "Y = fft(sig);\n"
+        "recon = ifft(Y);\n"
+        "c = conv([1, 2], [3, 4]);\n"
+    );
+    assert(res7.success);
+    auto recon = interpreter.workspace()->get("recon").toMatrix();
+    assert(std::abs(recon(0, 0) - 1.0) < 1e-8);
+    assert(std::abs(recon(3, 0) - 4.0) < 1e-8);
+    auto c = interpreter.workspace()->get("c").toMatrix();
+    assert(c(0, 0) == 3.0 && c(0, 1) == 10.0 && c(0, 2) == 8.0);
+
+    // File I/O: writematrix and readmatrix
+    auto res8 = interpreter.execute(
+        "writematrix([11, 22; 33, 44], 'test_interp_io.csv');\n"
+        "M_read = readmatrix('test_interp_io.csv');\n"
+    );
+    assert(res8.success);
+    auto M_read = interpreter.workspace()->get("M_read").toMatrix();
+    assert(M_read(0, 0) == 11.0 && M_read(1, 1) == 44.0);
+    std::remove("test_interp_io.csv");
+
+    std::cout << "[PASS] Phase 2 Interpreter features (\\, mrdivide, .\\, multi-assign, built-ins, I/O)\n";
+}
+
+void testPhase3GraphicsCommands() {
+    matforge::engine::Interpreter interpreter;
+
+    bool plotCalled = false;
+    std::string plotFmt;
+    std::string plotType;
+    interpreter.setPlotCallback([&](const matforge::engine::Interpreter::PlotCommand& cmd) {
+        plotCalled = true;
+        plotFmt = cmd.format;
+        plotType = cmd.plotType;
+    });
+
+    bool holdState = false;
+    interpreter.setHoldCallback([&](bool h) { holdState = h; });
+
+    bool gridState = false;
+    interpreter.setGridCallback([&](bool g) { gridState = g; });
+
+    std::string plotTitle;
+    interpreter.setTitleCallback([&](const std::string& t) { plotTitle = t; });
+
+    std::string xLabel, yLabel;
+    interpreter.setLabelCallback([&](const std::string& l, bool isX) {
+        if (isX) xLabel = l; else yLabel = l;
+    });
+
+    std::vector<std::string> legends;
+    interpreter.setLegendCallback([&](const std::vector<std::string>& l) { legends = l; });
+
+    int subR = 0, subC = 0, subP = 0;
+    interpreter.setSubplotCallback([&](int r, int c, int p) {
+        subR = r; subC = c; subP = p;
+    });
+
+    // Test formatted plot
+    auto res1 = interpreter.execute("x = 0:0.1:1; y = x.^2; plot(x, y, 'r--*');");
+    assert(res1.success);
+    assert(plotCalled);
+    assert(plotFmt == "r--*");
+    assert(plotType == "plot");
+
+    // Test bar and stem
+    auto res2 = interpreter.execute("bar([1, 2, 3]);");
+    assert(res2.success);
+    assert(plotType == "bar");
+
+    auto res3 = interpreter.execute("stem(x, y);");
+    assert(res3.success);
+    assert(plotType == "stem");
+
+    // Test hold on & hold off commands
+    auto res4 = interpreter.execute("hold on;");
+    assert(res4.success);
+    assert(holdState == true);
+
+    auto res5 = interpreter.execute("hold off;");
+    assert(res5.success);
+    assert(holdState == false);
+
+    // Test grid on & grid off
+    auto res6 = interpreter.execute("grid on;");
+    assert(res6.success);
+    assert(gridState == true);
+
+    // Test title, xlabel, ylabel, legend
+    auto res7 = interpreter.execute(
+        "title('Parabola');\n"
+        "xlabel('Time (s)');\n"
+        "ylabel('Velocity');\n"
+        "legend('First', 'Second');\n"
+    );
+    assert(res7.success);
+    assert(plotTitle == "Parabola");
+    assert(xLabel == "Time (s)");
+    assert(yLabel == "Velocity");
+    assert(legends.size() == 2 && legends[0] == "First" && legends[1] == "Second");
+
+    // Test subplot
+    auto res8 = interpreter.execute("subplot(2, 2, 3);");
+    assert(res8.success);
+    assert(subR == 2 && subC == 2 && subP == 3);
+
+    std::cout << "[PASS] Phase 3 Graphics and Plotting commands (plot, bar, stem, hold, grid, title, labels, subplot)\n";
+}
+
 int main() {
     std::cout << "Running Interpreter unit tests...\n";
     testAssignmentsAndMath();
@@ -209,6 +393,8 @@ int main() {
     testSubscriptAssignment();
     testControlFlow();
     testUserFunctions();
+    testPhase2Interpreter();
+    testPhase3GraphicsCommands();
     std::cout << "All Interpreter unit tests passed!\n";
     return 0;
 }

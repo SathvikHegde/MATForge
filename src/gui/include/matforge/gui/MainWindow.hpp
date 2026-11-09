@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QTabWidget>
 #include <memory>
+#include "matforge/engine/Interpreter.hpp"
 
 namespace matforge::engine {
 class Interpreter;
@@ -33,7 +34,7 @@ private slots:
     void onCommandSubmitted(const QString& command);
     void onFileDoubleClicked(const QString& filePath);
     void onVariableInspected(const QString& varName);
-    void onPlotRequested(const std::vector<double>& x, const std::vector<double>& y, const std::string& title);
+    void onPlotRequested(const matforge::engine::Interpreter::PlotCommand& cmd);
 
 private:
     void setupUi();

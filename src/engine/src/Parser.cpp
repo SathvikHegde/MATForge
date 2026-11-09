@@ -83,6 +83,28 @@ bool Parser::isSubscriptAssignment() const {
     return false;
 }
 
+bool Parser::isMultiAssignment() const {
+    if (cursor_ >= tokens_.size() || tokens_[cursor_].type != TokenType::LBracket) {
+        return false;
+    }
+    std::size_t i = cursor_ + 1;
+    bool hasIdent = false;
+    while (i < tokens_.size()) {
+        if (tokens_[i].type == TokenType::Identifier) {
+            hasIdent = true;
+            ++i;
+        } else if (tokens_[i].type == TokenType::Comma) {
+            ++i;
+        } else if (tokens_[i].type == TokenType::RBracket) {
+            ++i;
+            return (i < tokens_.size() && tokens_[i].type == TokenType::Assign && hasIdent);
+        } else {
+            return false;
+        }
+    }
+    return false;
+}
+
 Program Parser::parse() {
     Program program;
     while (!isAtEnd()) {
@@ -139,7 +161,31 @@ std::unique_ptr<Statement> Parser::parseStatement() {
         return std::make_unique<ReturnStmt>(std::move(retExpr));
     }
 
-    // 6. Subscript Assignment: A(1, 2) = val; or A(:, 1) = val;
+    // 6. Multi-Variable Assignment: [U, S, V] = svd(A); or [V, D] = eig(A);
+    if (isMultiAssignment()) {
+        advance(); // consume '['
+        std::vector<std::string> targets;
+        while (!check(TokenType::RBracket) && !isAtEnd()) {
+            if (check(TokenType::Identifier)) {
+                targets.push_back(advance().text);
+            } else if (check(TokenType::Comma)) {
+                advance();
+            } else {
+                break;
+            }
+        }
+        if (!match(TokenType::RBracket)) {
+            throw std::runtime_error("Expected ']' in multi-assignment.");
+        }
+        if (!match(TokenType::Assign)) {
+            throw std::runtime_error("Expected '=' in multi-assignment.");
+        }
+        auto expr = parseExpression();
+        bool suppress = match(TokenType::Semicolon);
+        return std::make_unique<MultiAssignmentStmt>(std::move(targets), std::move(expr), suppress);
+    }
+
+    // 7. Subscript Assignment: A(1, 2) = val; or A(:, 1) = val;
     if (isSubscriptAssignment()) {
         std::string varName = advance().text; // consume identifier
         advance(); // consume '('
@@ -170,7 +216,8 @@ std::unique_ptr<Statement> Parser::parseStatement() {
     if (check(TokenType::Identifier)) {
         std::string name = peek().text;
         if (name == "clear" || name == "clc" || name == "who" || name == "whos" || name == "help" ||
-            name == "exit" || name == "quit" || name == "close" || name == "clf" || name == "run") {
+            name == "exit" || name == "quit" || name == "close" || name == "clf" || name == "run" ||
+            name == "hold" || name == "grid") {
             advance();
             std::vector<std::string> args;
             while (!isAtEnd() && !check(TokenType::Newline) && !check(TokenType::Semicolon) && !check(TokenType::Comma)) {
@@ -407,16 +454,18 @@ std::unique_ptr<Expr> Parser::parseAdditive() {
 std::unique_ptr<Expr> Parser::parseMultiplicative() {
     auto expr = parsePower();
 
-    while (check(TokenType::Star) || check(TokenType::Slash) ||
-           check(TokenType::DotStar) || check(TokenType::DotSlash)) {
+    while (check(TokenType::Star) || check(TokenType::Slash) || check(TokenType::Backslash) ||
+           check(TokenType::DotStar) || check(TokenType::DotSlash) || check(TokenType::DotBackslash)) {
         TokenType op = advance().type;
         auto right = parsePower();
         BinaryOp bOp = BinaryOp::Multiply;
         switch (op) {
             case TokenType::Star: bOp = BinaryOp::Multiply; break;
             case TokenType::Slash: bOp = BinaryOp::Divide; break;
+            case TokenType::Backslash: bOp = BinaryOp::Backslash; break;
             case TokenType::DotStar: bOp = BinaryOp::DotMultiply; break;
             case TokenType::DotSlash: bOp = BinaryOp::DotDivide; break;
+            case TokenType::DotBackslash: bOp = BinaryOp::DotBackslash; break;
             default: break;
         }
         expr = std::make_unique<BinaryExpr>(bOp, std::move(expr), std::move(right));

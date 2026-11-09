@@ -18,9 +18,21 @@ struct ExecutionResult {
 
 class Interpreter {
 public:
-    using PlotCallback = std::function<void(const std::vector<double>& x, 
-                                            const std::vector<double>& y, 
-                                            const std::string& title)>;
+    struct PlotCommand {
+        std::vector<double> x;
+        std::vector<double> y;
+        std::string format;
+        std::string plotType{"line"};
+        std::string label;
+    };
+
+    using PlotCallback = std::function<void(const PlotCommand& cmd)>;
+    using HoldCallback = std::function<void(bool hold)>;
+    using GridCallback = std::function<void(bool grid)>;
+    using TitleCallback = std::function<void(const std::string& title)>;
+    using LabelCallback = std::function<void(const std::string& label, bool isX)>;
+    using LegendCallback = std::function<void(const std::vector<std::string>& labels)>;
+    using SubplotCallback = std::function<void(int rows, int cols, int index)>;
     using ClearScreenCallback = std::function<void()>;
     using CloseFigureCallback = std::function<void()>;
     using ClearFigureCallback = std::function<void()>;
@@ -32,6 +44,12 @@ public:
     std::shared_ptr<Workspace> workspace() const { return workspace_; }
 
     void setPlotCallback(PlotCallback cb) { plotCallback_ = std::move(cb); }
+    void setHoldCallback(HoldCallback cb) { holdCallback_ = std::move(cb); }
+    void setGridCallback(GridCallback cb) { gridCallback_ = std::move(cb); }
+    void setTitleCallback(TitleCallback cb) { titleCallback_ = std::move(cb); }
+    void setLabelCallback(LabelCallback cb) { labelCallback_ = std::move(cb); }
+    void setLegendCallback(LegendCallback cb) { legendCallback_ = std::move(cb); }
+    void setSubplotCallback(SubplotCallback cb) { subplotCallback_ = std::move(cb); }
     void setClearScreenCallback(ClearScreenCallback cb) { clearScreenCallback_ = std::move(cb); }
     void setCloseFigureCallback(CloseFigureCallback cb) { closeFigureCallback_ = std::move(cb); }
     void setClearFigureCallback(ClearFigureCallback cb) { clearFigureCallback_ = std::move(cb); }
@@ -49,6 +67,7 @@ private:
     matforge::core::Value evaluateEnd(const EndExpr& expr);
 
     void executeStatement(const Statement& stmt, std::ostringstream& out);
+    void executeMultiAssign(const MultiAssignmentStmt& stmt, std::ostringstream& out);
     void executeSubscriptAssign(const SubscriptAssignStmt& stmt, std::ostringstream& out);
     void executeFor(const ForStmt& stmt, std::ostringstream& out);
     void executeWhile(const WhileStmt& stmt, std::ostringstream& out);
@@ -60,6 +79,12 @@ private:
     std::shared_ptr<Workspace> workspace_;
     std::vector<std::size_t> endContextStack_;
     PlotCallback plotCallback_;
+    HoldCallback holdCallback_;
+    GridCallback gridCallback_;
+    TitleCallback titleCallback_;
+    LabelCallback labelCallback_;
+    LegendCallback legendCallback_;
+    SubplotCallback subplotCallback_;
     ClearScreenCallback clearScreenCallback_;
     CloseFigureCallback closeFigureCallback_;
     ClearFigureCallback clearFigureCallback_;

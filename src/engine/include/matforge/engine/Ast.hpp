@@ -54,9 +54,11 @@ enum class BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Backslash,
     Power,
     DotMultiply,
     DotDivide,
+    DotBackslash,
     DotPower,
     Equal,
     NotEqual,
@@ -315,6 +317,21 @@ public:
 private:
     std::string command_;
     std::vector<std::string> args_;
+};
+
+class MultiAssignmentStmt : public Statement {
+public:
+    MultiAssignmentStmt(std::vector<std::string> targetVars, std::unique_ptr<Expr> expr, bool suppress)
+        : targetVars_(std::move(targetVars)), expr_(std::move(expr)) {
+        suppressOutput = suppress;
+    }
+
+    const std::vector<std::string>& targetVars() const { return targetVars_; }
+    const Expr& expr() const { return *expr_; }
+
+private:
+    std::vector<std::string> targetVars_;
+    std::unique_ptr<Expr> expr_;
 };
 
 struct Program {

@@ -5,6 +5,7 @@
 #include "matforge/gui/FileBrowserWidget.hpp"
 #include "matforge/gui/CommandHistoryWidget.hpp"
 #include "matforge/gui/FigureWindow.hpp"
+#include "matforge/gui/VariableEditorDialog.hpp"
 #include "matforge/engine/Interpreter.hpp"
 #include "matforge/engine/Workspace.hpp"
 #include "matforge/engine/Lexer.hpp"
@@ -27,8 +28,49 @@ MainWindow::MainWindow(QWidget* parent)
       figureWindow_(new FigureWindow(this)) {
     setupUi();
 
-    interpreter_->setPlotCallback([this](const std::vector<double>& x, const std::vector<double>& y, const std::string& title) {
-        onPlotRequested(x, y, title);
+    interpreter_->setPlotCallback([this](const matforge::engine::Interpreter::PlotCommand& cmd) {
+        onPlotRequested(cmd);
+    });
+
+    interpreter_->setHoldCallback([this](bool hold) {
+        QMetaObject::invokeMethod(this, [this, hold]() {
+            if (figureWindow_) figureWindow_->setHold(hold);
+        }, Qt::QueuedConnection);
+    });
+
+    interpreter_->setGridCallback([this](bool grid) {
+        QMetaObject::invokeMethod(this, [this, grid]() {
+            if (figureWindow_) figureWindow_->setGrid(grid);
+        }, Qt::QueuedConnection);
+    });
+
+    interpreter_->setTitleCallback([this](const std::string& title) {
+        QMetaObject::invokeMethod(this, [this, title]() {
+            if (figureWindow_) figureWindow_->setTitle(QString::fromStdString(title));
+        }, Qt::QueuedConnection);
+    });
+
+    interpreter_->setLabelCallback([this](const std::string& label, bool isX) {
+        QMetaObject::invokeMethod(this, [this, label, isX]() {
+            if (figureWindow_) {
+                if (isX) figureWindow_->setXLabel(QString::fromStdString(label));
+                else figureWindow_->setYLabel(QString::fromStdString(label));
+            }
+        }, Qt::QueuedConnection);
+    });
+
+    interpreter_->setLegendCallback([this](const std::vector<std::string>& labels) {
+        std::vector<QString> qlabels;
+        for (const auto& l : labels) qlabels.push_back(QString::fromStdString(l));
+        QMetaObject::invokeMethod(this, [this, qlabels]() {
+            if (figureWindow_) figureWindow_->setLegend(qlabels);
+        }, Qt::QueuedConnection);
+    });
+
+    interpreter_->setSubplotCallback([this](int rows, int cols, int index) {
+        QMetaObject::invokeMethod(this, [this, rows, cols, index]() {
+            if (figureWindow_) figureWindow_->setSubplot(rows, cols, index);
+        }, Qt::QueuedConnection);
     });
 
     interpreter_->setClearScreenCallback([this]() {
@@ -302,12 +344,14 @@ void MainWindow::onCommandSubmitted(const QString& command) {
 }
 
 void MainWindow::onVariableInspected(const QString& varName) {
-    onCommandSubmitted(varName);
+    auto* editor = new VariableEditorDialog(varName, workspace_, this);
+    editor->setAttribute(Qt::WA_DeleteOnClose);
+    editor->show();
 }
 
-void MainWindow::onPlotRequested(const std::vector<double>& x, const std::vector<double>& y, const std::string& title) {
-    QMetaObject::invokeMethod(this, [this, x, y, title]() {
-        figureWindow_->plot(x, y, QString::fromStdString(title));
+void MainWindow::onPlotRequested(const matforge::engine::Interpreter::PlotCommand& cmd) {
+    QMetaObject::invokeMethod(this, [this, cmd]() {
+        figureWindow_->plot(cmd.x, cmd.y, QString::fromStdString(cmd.format), QString::fromStdString(cmd.plotType));
     }, Qt::QueuedConnection);
 }
 

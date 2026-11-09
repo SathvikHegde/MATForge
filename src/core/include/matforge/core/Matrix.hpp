@@ -5,6 +5,8 @@
 #include <initializer_list>
 #include <cstddef>
 #include <iosfwd>
+#include <tuple>
+#include <utility>
 
 namespace matforge::core {
 
@@ -82,6 +84,41 @@ public:
     [[nodiscard]] double mean() const;
     [[nodiscard]] double min() const;
     [[nodiscard]] double max() const;
+
+    // Advanced Linear Algebra (Phase 2 - Powered by Eigen)
+    [[nodiscard]] Matrix inverse() const;
+    [[nodiscard]] Matrix solve(const Matrix& B) const;      // A \ B (mldivide)
+    [[nodiscard]] Matrix rightSolve(const Matrix& B) const; // A / B (mrdivide)
+    [[nodiscard]] Matrix pinv(double tolerance = -1.0) const;
+    [[nodiscard]] std::size_t rank(double tolerance = -1.0) const;
+    [[nodiscard]] double cond() const;
+    [[nodiscard]] Matrix eigenvalues() const;
+    [[nodiscard]] std::pair<Matrix, Matrix> eig() const;    // {V, D}
+    [[nodiscard]] Matrix singularValues() const;
+    [[nodiscard]] std::tuple<Matrix, Matrix, Matrix> svd() const; // {U, S, V}
+    [[nodiscard]] std::pair<Matrix, Matrix> lu() const;     // {L, U}
+    [[nodiscard]] std::pair<Matrix, Matrix> qr() const;     // {Q, R}
+    [[nodiscard]] Matrix chol() const;                      // Upper Cholesky factor R (R'*R = A)
+
+    // Random Number & Matrix Generation (Phase 2)
+    static Matrix rand(std::size_t rows, std::size_t cols);
+    static Matrix randn(std::size_t rows, std::size_t cols);
+    static Matrix randi(int imax, std::size_t rows, std::size_t cols);
+    static void setSeed(unsigned int seed);
+
+    // Statistics (Phase 2)
+    [[nodiscard]] double stdDev() const;
+    [[nodiscard]] double variance() const;
+    [[nodiscard]] double median() const;
+
+    // Signal Processing & Transforms (Phase 2)
+    [[nodiscard]] Matrix fft() const;   // Returns N x 2 matrix [real, imag]
+    [[nodiscard]] Matrix ifft() const;  // Returns reconstructed signal
+    static Matrix conv(const Matrix& u, const Matrix& v); // 1D convolution
+
+    // File I/O (Phase 2)
+    static Matrix readCSV(const std::string& path);
+    void writeCSV(const std::string& path, char delimiter = ',') const;
 
     // Reshaping
     void reshape(std::size_t newRows, std::size_t newCols);

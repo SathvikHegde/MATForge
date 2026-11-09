@@ -13,5 +13,10 @@ target_include_directories(matforge_core
         $<INSTALL_INTERFACE:include>
 )
 
+target_link_libraries(matforge_core
+    PUBLIC
+        Eigen3::Eigen
+)
+
 target_compile_features(matforge_core PUBLIC cxx_std_20)
 

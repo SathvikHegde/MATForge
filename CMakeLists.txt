@@ -36,6 +36,21 @@ if(MSVC)
     )
 endif()
 
+# Eigen 5.0.1 Integration (Header-only Linear Algebra)
+include(FetchContent)
+message(STATUS "--> Fetching Eigen 5.0.1...")
+FetchContent_Declare(
+    Eigen3
+    URL https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(Eigen3)
+if(NOT eigen3_POPULATED)
+    FetchContent_Populate(Eigen3)
+    add_library(Eigen3::Eigen INTERFACE IMPORTED GLOBAL)
+    target_include_directories(Eigen3::Eigen INTERFACE ${eigen3_SOURCE_DIR})
+endif()
+
 # Qt 6 Configuration for GUI
 if(MATFORGE_BUILD_GUI)
     # Search for Qt 6 Core, Gui, and Widgets
