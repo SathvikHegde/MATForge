@@ -58,12 +58,37 @@ bool Parser::matchAny(std::initializer_list<TokenType> types) {
     return false;
 }
 
+void Parser::consumeSeparators() {
+    while (check(TokenType::Newline) || check(TokenType::Semicolon) || check(TokenType::Comma)) {
+        advance();
+    }
+}
+
+bool Parser::isSubscriptAssignment() const {
+    if (cursor_ + 2 >= tokens_.size()) return false;
+    if (tokens_[cursor_].type != TokenType::Identifier) return false;
+    if (tokens_[cursor_ + 1].type != TokenType::LParen) return false;
+
+    int depth = 0;
+    for (std::size_t i = cursor_ + 1; i < tokens_.size(); ++i) {
+        if (tokens_[i].type == TokenType::LParen) {
+            depth++;
+        } else if (tokens_[i].type == TokenType::RParen) {
+            depth--;
+            if (depth == 0) {
+                return (i + 1 < tokens_.size() && tokens_[i + 1].type == TokenType::Assign);
+            }
+        }
+    }
+    return false;
+}
+
 Program Parser::parse() {
     Program program;
     while (!isAtEnd()) {
-        if (match(TokenType::Newline) || match(TokenType::Semicolon) || match(TokenType::Comma)) {
-            continue;
-        }
+        consumeSeparators();
+        if (isAtEnd()) break;
+
         auto stmt = parseStatement();
         if (stmt) {
             program.statements.push_back(std::move(stmt));
@@ -73,15 +98,83 @@ Program Parser::parse() {
 }
 
 std::unique_ptr<Statement> Parser::parseStatement() {
-    // Check for MATLAB command-line commands without parens (e.g., clear, clc, who, whos, help)
+    consumeSeparators();
+    if (isAtEnd()) return nullptr;
+
+    // 1. Control flow: For loop
+    if (check(TokenType::For)) {
+        return parseForStatement();
+    }
+
+    // 2. Control flow: While loop
+    if (check(TokenType::While)) {
+        return parseWhileStatement();
+    }
+
+    // 3. Control flow: If statement
+    if (check(TokenType::If)) {
+        return parseIfStatement();
+    }
+
+    // 4. Function definition
+    if (check(TokenType::Function)) {
+        return parseFunctionStatement();
+    }
+
+    // 5. Jump statements
+    if (match(TokenType::Break)) {
+        match(TokenType::Semicolon);
+        return std::make_unique<BreakStmt>();
+    }
+    if (match(TokenType::Continue)) {
+        match(TokenType::Semicolon);
+        return std::make_unique<ContinueStmt>();
+    }
+    if (match(TokenType::Return)) {
+        std::unique_ptr<Expr> retExpr = nullptr;
+        if (!check(TokenType::Semicolon) && !check(TokenType::Newline) && !isAtEnd()) {
+            retExpr = parseExpression();
+        }
+        match(TokenType::Semicolon);
+        return std::make_unique<ReturnStmt>(std::move(retExpr));
+    }
+
+    // 6. Subscript Assignment: A(1, 2) = val; or A(:, 1) = val;
+    if (isSubscriptAssignment()) {
+        std::string varName = advance().text; // consume identifier
+        advance(); // consume '('
+        std::vector<std::unique_ptr<Expr>> indices;
+        if (!check(TokenType::RParen)) {
+            do {
+                if (check(TokenType::Colon) && 
+                    (peekNext().type == TokenType::Comma || peekNext().type == TokenType::RParen)) {
+                    advance();
+                    indices.push_back(std::make_unique<ColonAllExpr>());
+                } else {
+                    indices.push_back(parseExpression());
+                }
+            } while (match(TokenType::Comma));
+        }
+        if (!match(TokenType::RParen)) {
+            throw std::runtime_error("Expected ')' after subscript indices.");
+        }
+        if (!match(TokenType::Assign)) {
+            throw std::runtime_error("Expected '=' in subscript assignment.");
+        }
+        auto expr = parseExpression();
+        bool suppress = match(TokenType::Semicolon);
+        return std::make_unique<SubscriptAssignStmt>(varName, std::move(indices), std::move(expr), suppress);
+    }
+
+    // 7. Check for MATLAB command-line commands without parens (e.g., clear, clc, who, whos, help, close, clf, run)
     if (check(TokenType::Identifier)) {
         std::string name = peek().text;
         if (name == "clear" || name == "clc" || name == "who" || name == "whos" || name == "help" ||
-            name == "exit" || name == "quit") {
+            name == "exit" || name == "quit" || name == "close" || name == "clf" || name == "run") {
             advance();
             std::vector<std::string> args;
             while (!isAtEnd() && !check(TokenType::Newline) && !check(TokenType::Semicolon) && !check(TokenType::Comma)) {
-                if (check(TokenType::Identifier) || check(TokenType::String)) {
+                if (check(TokenType::Identifier) || check(TokenType::String) || check(TokenType::Number)) {
                     args.push_back(advance().text);
                 } else {
                     break;
@@ -93,7 +186,7 @@ std::unique_ptr<Statement> Parser::parseStatement() {
             return cmd;
         }
 
-        // Check for Assignment: identifier = expr
+        // 8. Variable Assignment: identifier = expr
         if (peekNext().type == TokenType::Assign) {
             std::string varName = advance().text; // consume identifier
             advance(); // consume '='
@@ -103,10 +196,153 @@ std::unique_ptr<Statement> Parser::parseStatement() {
         }
     }
 
-    // Otherwise, Expression statement
+    // 9. Otherwise, Expression statement
     auto expr = parseExpression();
     bool suppress = match(TokenType::Semicolon);
     return std::make_unique<ExpressionStmt>(std::move(expr), suppress);
+}
+
+std::unique_ptr<Statement> Parser::parseForStatement() {
+    advance(); // consume 'for'
+    if (!check(TokenType::Identifier)) {
+        throw std::runtime_error("Expected variable name after 'for'.");
+    }
+    std::string varName = advance().text;
+    if (!match(TokenType::Assign)) {
+        throw std::runtime_error("Expected '=' after for loop variable.");
+    }
+    auto range = parseExpression();
+    consumeSeparators();
+    auto body = parseBlockUntil({TokenType::End});
+    if (!match(TokenType::End)) {
+        throw std::runtime_error("Expected 'end' at end of for loop.");
+    }
+    match(TokenType::Semicolon);
+    return std::make_unique<ForStmt>(varName, std::move(range), std::move(body));
+}
+
+std::unique_ptr<Statement> Parser::parseWhileStatement() {
+    advance(); // consume 'while'
+    auto cond = parseExpression();
+    consumeSeparators();
+    auto body = parseBlockUntil({TokenType::End});
+    if (!match(TokenType::End)) {
+        throw std::runtime_error("Expected 'end' at end of while loop.");
+    }
+    match(TokenType::Semicolon);
+    return std::make_unique<WhileStmt>(std::move(cond), std::move(body));
+}
+
+std::unique_ptr<Statement> Parser::parseIfStatement() {
+    advance(); // consume 'if'
+    std::vector<IfBranch> branches;
+    auto cond = parseExpression();
+    consumeSeparators();
+    auto body = parseBlockUntil({TokenType::Elseif, TokenType::Else, TokenType::End});
+    branches.push_back(IfBranch{std::move(cond), std::move(body)});
+
+    while (match(TokenType::Elseif)) {
+        auto elifCond = parseExpression();
+        consumeSeparators();
+        auto elifBody = parseBlockUntil({TokenType::Elseif, TokenType::Else, TokenType::End});
+        branches.push_back(IfBranch{std::move(elifCond), std::move(elifBody)});
+    }
+
+    std::vector<std::shared_ptr<Statement>> elseBody;
+    if (match(TokenType::Else)) {
+        consumeSeparators();
+        elseBody = parseBlockUntil({TokenType::End});
+    }
+
+    if (!match(TokenType::End)) {
+        throw std::runtime_error("Expected 'end' at end of if statement.");
+    }
+    match(TokenType::Semicolon);
+    return std::make_unique<IfStmt>(std::move(branches), std::move(elseBody));
+}
+
+std::unique_ptr<Statement> Parser::parseFunctionStatement() {
+    advance(); // consume 'function'
+    std::vector<std::string> returnParams;
+    std::string functionName;
+
+    // Check if bracketed return list: [a, b] = f(...)
+    if (match(TokenType::LBracket)) {
+        while (!check(TokenType::RBracket) && !isAtEnd()) {
+            if (check(TokenType::Identifier)) {
+                returnParams.push_back(advance().text);
+            }
+            match(TokenType::Comma);
+        }
+        if (!match(TokenType::RBracket) || !match(TokenType::Assign)) {
+            throw std::runtime_error("Expected '] =' after function return parameter list.");
+        }
+        if (!check(TokenType::Identifier)) {
+            throw std::runtime_error("Expected function name after return parameters.");
+        }
+        functionName = advance().text;
+    } else if (check(TokenType::Identifier)) {
+        std::string firstId = advance().text;
+        if (match(TokenType::Assign)) {
+            // function a = f(...)
+            returnParams.push_back(firstId);
+            if (!check(TokenType::Identifier)) {
+                throw std::runtime_error("Expected function name after '=' in function declaration.");
+            }
+            functionName = advance().text;
+        } else {
+            // function f(...)
+            functionName = firstId;
+        }
+    } else {
+        throw std::runtime_error("Expected function name or return list in function declaration.");
+    }
+
+    // Parameter list: (p1, p2, ...)
+    std::vector<std::string> paramNames;
+    if (match(TokenType::LParen)) {
+        if (!check(TokenType::RParen)) {
+            do {
+                if (check(TokenType::Identifier)) {
+                    paramNames.push_back(advance().text);
+                }
+            } while (match(TokenType::Comma));
+        }
+        if (!match(TokenType::RParen)) {
+            throw std::runtime_error("Expected ')' after function parameter list.");
+        }
+    }
+
+    consumeSeparators();
+    auto body = parseBlockUntil({TokenType::End});
+    if (match(TokenType::End)) {
+        match(TokenType::Semicolon);
+    }
+
+    return std::make_unique<FunctionDefStmt>(functionName, returnParams, paramNames, std::move(body));
+}
+
+std::vector<std::shared_ptr<Statement>> Parser::parseBlockUntil(std::initializer_list<TokenType> endTokens) {
+    std::vector<std::shared_ptr<Statement>> stmts;
+    while (!isAtEnd()) {
+        consumeSeparators();
+        if (isAtEnd()) break;
+
+        bool shouldStop = false;
+        for (TokenType et : endTokens) {
+            if (check(et)) {
+                shouldStop = true;
+                break;
+            }
+        }
+        if (shouldStop) break;
+
+        auto stmt = parseStatement();
+        if (stmt) {
+            stmts.push_back(std::move(stmt));
+        }
+    }
+    return stmts;
 }
 
 std::unique_ptr<Expr> Parser::parseExpression() {
@@ -114,13 +350,13 @@ std::unique_ptr<Expr> Parser::parseExpression() {
 }
 
 std::unique_ptr<Expr> Parser::parseRelational() {
-    auto expr = parseAdditive();
+    auto expr = parseColon();
 
     while (check(TokenType::Equals) || check(TokenType::NotEquals) ||
            check(TokenType::Less) || check(TokenType::LessEquals) ||
            check(TokenType::Greater) || check(TokenType::GreaterEquals)) {
         TokenType op = advance().type;
-        auto right = parseAdditive();
+        auto right = parseColon();
         BinaryOp bOp = BinaryOp::Equal;
         switch (op) {
             case TokenType::Equals: bOp = BinaryOp::Equal; break;
@@ -132,6 +368,24 @@ std::unique_ptr<Expr> Parser::parseRelational() {
             default: break;
         }
         expr = std::make_unique<BinaryExpr>(bOp, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+std::unique_ptr<Expr> Parser::parseColon() {
+    auto expr = parseAdditive();
+
+    if (match(TokenType::Colon)) {
+        auto next = parseAdditive();
+        if (match(TokenType::Colon)) {
+            // start:step:stop
+            auto stop = parseAdditive();
+            return std::make_unique<RangeExpr>(std::move(expr), std::move(next), std::move(stop));
+        } else {
+            // start:stop
+            return std::make_unique<RangeExpr>(std::move(expr), nullptr, std::move(next));
+        }
     }
 
     return expr;
@@ -206,7 +460,13 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             std::vector<std::unique_ptr<Expr>> args;
             if (!check(TokenType::RParen)) {
                 do {
-                    args.push_back(parseExpression());
+                    if (check(TokenType::Colon) && 
+                        (peekNext().type == TokenType::Comma || peekNext().type == TokenType::RParen)) {
+                        advance();
+                        args.push_back(std::make_unique<ColonAllExpr>());
+                    } else {
+                        args.push_back(parseExpression());
+                    }
                 } while (match(TokenType::Comma));
             }
             if (!match(TokenType::RParen)) {
@@ -238,6 +498,14 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
 
     if (match(TokenType::Identifier)) {
         return std::make_unique<VariableExpr>(previous().text);
+    }
+
+    if (match(TokenType::End)) {
+        return std::make_unique<EndExpr>();
+    }
+
+    if (match(TokenType::Colon)) {
+        return std::make_unique<ColonAllExpr>();
     }
 
     if (match(TokenType::LParen)) {

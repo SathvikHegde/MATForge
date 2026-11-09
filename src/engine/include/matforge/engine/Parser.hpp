@@ -25,8 +25,15 @@ private:
     bool matchAny(std::initializer_list<TokenType> types);
 
     std::unique_ptr<Statement> parseStatement();
+    std::unique_ptr<Statement> parseForStatement();
+    std::unique_ptr<Statement> parseWhileStatement();
+    std::unique_ptr<Statement> parseIfStatement();
+    std::unique_ptr<Statement> parseFunctionStatement();
+    std::vector<std::shared_ptr<Statement>> parseBlockUntil(std::initializer_list<TokenType> endTokens);
+
     std::unique_ptr<Expr> parseExpression();
     std::unique_ptr<Expr> parseRelational();
+    std::unique_ptr<Expr> parseColon();
     std::unique_ptr<Expr> parseAdditive();
     std::unique_ptr<Expr> parseMultiplicative();
     std::unique_ptr<Expr> parsePower();
@@ -34,6 +41,9 @@ private:
     std::unique_ptr<Expr> parsePostfix();
     std::unique_ptr<Expr> parsePrimary();
     std::unique_ptr<Expr> parseMatrixLiteral();
+
+    bool isSubscriptAssignment() const;
+    void consumeSeparators();
 
     void synchronize();
 

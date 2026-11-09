@@ -152,28 +152,60 @@ ctest -C Debug --output-on-failure
 
 Launch `matforge_cli.exe` or `matforge_app.exe`:
 
+### Matrix Arithmetic & Slicing
 ```matlab
->> A = [1, 2; 3, 4]
-A =
-       1.0000    2.0000
-       3.0000    4.0000
+>> A = [1, 2, 3; 4, 5, 6; 7, 8, 9]
+>> corner = A(2:end, end-1:end)
+corner =
+       5.0000    6.0000
+       8.0000    9.0000
 
->> b = [5; 6];
->> x = A * b
-x =
-      17.0000
-      39.0000
+>> A(1, :) = [10, 20, 30];   % Row assignment
+>> A(4, 4) = 99;             % Auto-expansion to 4x4 matrix
+```
 
->> whos
-  Name      Size         Bytes  Class
-  ====      ====         =====  =====
-  A         2x2          48     double
-  b         2x1          32     double
-  x         2x1          32     double
+### Colon Ranges
+```matlab
+>> v = 1:5;                  % [1, 2, 3, 4, 5]
+>> t = 0:0.1:10;             % Step range
+>> rev = 10:-2:0;            % Decrementing range
+```
 
->> t = linspace(0, 6.28, 50);
->> y = sin(t);
->> plot(t, y)
+### Control Flow (Loops & Conditionals)
+```matlab
+total = 0;
+for i = 1:10
+    total = total + i;
+end
+total
+
+val = 7;
+if val > 10
+    out = 1;
+elseif val > 5
+    out = 2;
+else
+    out = 3;
+end
+```
+
+### User-Defined Functions
+```matlab
+function y = square(x)
+    y = x * x;
+end
+
+val = square(6)              % Returns 36.0000
+```
+
+### Plotting & Figure Commands
+```matlab
+t = linspace(0, 6.28, 100);
+y = sin(t);
+plot(t, y)
+
+clf                          % Clears current plot
+close                        % Closes the figure window
 ```
 
 ---

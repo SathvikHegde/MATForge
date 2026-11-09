@@ -41,6 +41,18 @@ public:
     static Matrix eye(std::size_t n);
     static Matrix eye(std::size_t rows, std::size_t cols);
     static Matrix linspace(double start, double stop, std::size_t num = 100);
+    static Matrix colon(double start, double step, double stop);
+
+    // Slicing and Submatrix access (0-based indices; empty vector indicates all elements ':')
+    [[nodiscard]] Matrix submatrix(const std::vector<std::size_t>& rowIndices, 
+                                   const std::vector<std::size_t>& colIndices) const;
+    [[nodiscard]] Matrix linearSubmatrix(const std::vector<std::size_t>& indices) const;
+
+    // Submatrix assignment (auto-expands matrix if indices exceed bounds)
+    void setSubmatrix(const std::vector<std::size_t>& rowIndices, 
+                      const std::vector<std::size_t>& colIndices, 
+                      const Matrix& val);
+    void setLinear(const std::vector<std::size_t>& indices, const Matrix& val);
 
     // Matrix Operations
     [[nodiscard]] Matrix transpose() const;

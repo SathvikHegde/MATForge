@@ -93,6 +93,168 @@ Matrix Matrix::linspace(double start, double stop, std::size_t num) {
     return result;
 }
 
+Matrix Matrix::colon(double start, double step, double stop) {
+    if (step == 0.0) {
+        throw std::invalid_argument("Colon step size cannot be zero.");
+    }
+    if ((step > 0.0 && start > stop) || (step < 0.0 && start < stop)) {
+        return Matrix(1, 0);
+    }
+
+    std::size_t num = static_cast<std::size_t>(std::floor((stop - start) / step + 1e-10)) + 1;
+    Matrix result(1, num);
+    for (std::size_t i = 0; i < num; ++i) {
+        result(0, i) = start + static_cast<double>(i) * step;
+    }
+    return result;
+}
+
+Matrix Matrix::submatrix(const std::vector<std::size_t>& rowIndices, 
+                         const std::vector<std::size_t>& colIndices) const {
+    std::vector<std::size_t> actualRows = rowIndices;
+    if (actualRows.empty()) {
+        actualRows.resize(rows_);
+        for (std::size_t i = 0; i < rows_; ++i) actualRows[i] = i;
+    }
+
+    std::vector<std::size_t> actualCols = colIndices;
+    if (actualCols.empty()) {
+        actualCols.resize(cols_);
+        for (std::size_t i = 0; i < cols_; ++i) actualCols[i] = i;
+    }
+
+    for (std::size_t r : actualRows) {
+        if (r >= rows_) throw std::out_of_range("Row index out of matrix bounds.");
+    }
+    for (std::size_t c : actualCols) {
+        if (c >= cols_) throw std::out_of_range("Column index out of matrix bounds.");
+    }
+
+    Matrix result(actualRows.size(), actualCols.size());
+    for (std::size_t r = 0; r < actualRows.size(); ++r) {
+        for (std::size_t c = 0; c < actualCols.size(); ++c) {
+            result(r, c) = (*this)(actualRows[r], actualCols[c]);
+        }
+    }
+    return result;
+}
+
+Matrix Matrix::linearSubmatrix(const std::vector<std::size_t>& indices) const {
+    for (std::size_t idx : indices) {
+        if (idx >= size()) throw std::out_of_range("Linear index exceeds matrix bounds.");
+    }
+
+    bool asRow = (rows_ == 1);
+    std::size_t outRows = asRow ? 1 : indices.size();
+    std::size_t outCols = asRow ? indices.size() : 1;
+    Matrix result(outRows, outCols);
+
+    for (std::size_t i = 0; i < indices.size(); ++i) {
+        result.rawData()[i] = data_[indices[i]];
+    }
+    return result;
+}
+
+void Matrix::setSubmatrix(const std::vector<std::size_t>& rowIndices, 
+                          const std::vector<std::size_t>& colIndices, 
+                          const Matrix& val) {
+    std::size_t maxR = rows_ > 0 ? rows_ - 1 : 0;
+    for (std::size_t r : rowIndices) {
+        if (r > maxR) maxR = r;
+    }
+
+    std::size_t maxC = cols_ > 0 ? cols_ - 1 : 0;
+    for (std::size_t c : colIndices) {
+        if (c > maxC) maxC = c;
+    }
+
+    std::size_t newRows = std::max(rows_, maxR + 1);
+    std::size_t newCols = std::max(cols_, maxC + 1);
+
+    if (newRows > rows_ || newCols > cols_) {
+        std::vector<double> newData(newRows * newCols, 0.0);
+        for (std::size_t r = 0; r < rows_; ++r) {
+            for (std::size_t c = 0; c < cols_; ++c) {
+                newData[r * newCols + c] = (*this)(r, c);
+            }
+        }
+        rows_ = newRows;
+        cols_ = newCols;
+        data_ = std::move(newData);
+    }
+
+    std::vector<std::size_t> actualRows = rowIndices;
+    if (actualRows.empty()) {
+        actualRows.resize(rows_);
+        for (std::size_t i = 0; i < rows_; ++i) actualRows[i] = i;
+    }
+
+    std::vector<std::size_t> actualCols = colIndices;
+    if (actualCols.empty()) {
+        actualCols.resize(cols_);
+        for (std::size_t i = 0; i < cols_; ++i) actualCols[i] = i;
+    }
+
+    if (val.isScalar()) {
+        double s = val.rawData()[0];
+        for (std::size_t r : actualRows) {
+            for (std::size_t c : actualCols) {
+                (*this)(r, c) = s;
+            }
+        }
+    } else {
+        if (actualRows.size() != val.rows() || actualCols.size() != val.cols()) {
+            if (actualRows.size() * actualCols.size() == val.size()) {
+                // Compatible 1D linear mapping
+                std::size_t valIdx = 0;
+                for (std::size_t r : actualRows) {
+                    for (std::size_t c : actualCols) {
+                        (*this)(r, c) = val.rawData()[valIdx++];
+                    }
+                }
+                return;
+            }
+            throw std::invalid_argument("Submatrix assignment dimension mismatch.");
+        }
+        for (std::size_t r = 0; r < actualRows.size(); ++r) {
+            for (std::size_t c = 0; c < actualCols.size(); ++c) {
+                (*this)(actualRows[r], actualCols[c]) = val(r, c);
+            }
+        }
+    }
+}
+
+void Matrix::setLinear(const std::vector<std::size_t>& indices, const Matrix& val) {
+    if (indices.empty()) return;
+
+    std::size_t maxIdx = *std::max_element(indices.begin(), indices.end());
+    if (maxIdx >= size()) {
+        std::size_t newSize = maxIdx + 1;
+        if (rows_ <= 1) {
+            rows_ = 1;
+            cols_ = newSize;
+        } else {
+            rows_ = (newSize + cols_ - 1) / cols_;
+            newSize = rows_ * cols_;
+        }
+        data_.resize(newSize, 0.0);
+    }
+
+    if (val.isScalar()) {
+        double s = val.rawData()[0];
+        for (std::size_t idx : indices) {
+            data_[idx] = s;
+        }
+    } else {
+        if (indices.size() != val.size()) {
+            throw std::invalid_argument("Linear assignment length mismatch.");
+        }
+        for (std::size_t i = 0; i < indices.size(); ++i) {
+            data_[indices[i]] = val.rawData()[i];
+        }
+    }
+}
+
 Matrix Matrix::transpose() const {
     Matrix result(cols_, rows_);
     for (std::size_t r = 0; r < rows_; ++r) {

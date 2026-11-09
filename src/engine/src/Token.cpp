@@ -31,6 +31,16 @@ std::string Token::typeName() const {
         case TokenType::Semicolon: return ";";
         case TokenType::Colon: return ":";
         case TokenType::Newline: return "Newline";
+        case TokenType::For: return "for";
+        case TokenType::While: return "while";
+        case TokenType::If: return "if";
+        case TokenType::Else: return "else";
+        case TokenType::Elseif: return "elseif";
+        case TokenType::End: return "end";
+        case TokenType::Function: return "function";
+        case TokenType::Return: return "return";
+        case TokenType::Break: return "break";
+        case TokenType::Continue: return "continue";
         case TokenType::EndOfFile: return "EndOfFile";
         case TokenType::Invalid: return "Invalid";
     }

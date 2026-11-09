@@ -85,7 +85,20 @@ Token Lexer::readIdentifier() {
     }
 
     std::string text = source_.substr(startPos, cursor_ - startPos);
-    return Token{TokenType::Identifier, text, 0.0, startLine, startCol};
+
+    TokenType type = TokenType::Identifier;
+    if (text == "for") type = TokenType::For;
+    else if (text == "while") type = TokenType::While;
+    else if (text == "if") type = TokenType::If;
+    else if (text == "else") type = TokenType::Else;
+    else if (text == "elseif") type = TokenType::Elseif;
+    else if (text == "end") type = TokenType::End;
+    else if (text == "function") type = TokenType::Function;
+    else if (text == "return") type = TokenType::Return;
+    else if (text == "break") type = TokenType::Break;
+    else if (text == "continue") type = TokenType::Continue;
+
+    return Token{type, text, 0.0, startLine, startCol};
 }
 
 Token Lexer::readString(char quote) {
@@ -136,7 +149,7 @@ std::vector<Token> Lexer::tokenize() {
                 TokenType prev = tokens.back().type;
                 if (prev == TokenType::Identifier || prev == TokenType::Number ||
                     prev == TokenType::RParen || prev == TokenType::RBracket ||
-                    prev == TokenType::Transpose) {
+                    prev == TokenType::Transpose || prev == TokenType::End) {
                     isTranspose = true;
                 }
             }

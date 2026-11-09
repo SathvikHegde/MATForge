@@ -1,6 +1,8 @@
 #include "matforge/engine/Interpreter.hpp"
+#include "matforge/engine/Lexer.hpp"
 #include <iostream>
 #include <string>
+#include <algorithm>
 
 int main(int argc, char* argv[]) {
     (void)argc;
@@ -24,8 +26,16 @@ int main(int argc, char* argv[]) {
     });
 
     std::string input;
+    std::string accumulatedCommand;
+    int blockDepth = 0;
+
     while (true) {
-        std::cout << ">> ";
+        if (blockDepth == 0) {
+            std::cout << ">> ";
+        } else {
+            std::cout << ".. ";
+        }
+
         if (!std::getline(std::cin, input)) {
             break;
         }
@@ -33,23 +43,56 @@ int main(int argc, char* argv[]) {
         // Trim whitespace
         auto start = input.find_first_not_of(" \t\r\n");
         if (start == std::string::npos) {
-            continue;
+            if (blockDepth == 0) continue;
         }
-        auto end = input.find_last_not_of(" \t\r\n");
-        std::string command = input.substr(start, end - start + 1);
+        std::string trimmed = (start == std::string::npos) ? "" : input.substr(start);
 
-        if (command == "exit" || command == "quit") {
+        if (blockDepth == 0 && (trimmed == "exit" || trimmed == "quit")) {
             break;
         }
 
-        auto result = interpreter.execute(command);
-        if (!result.success) {
-            std::cout << "Error: " << result.errorMessage << "\n\n";
-        } else if (!result.output.empty()) {
-            std::cout << result.output;
+        accumulatedCommand += input + "\n";
+
+        // Analyze token block depth
+        matforge::engine::Lexer lexer(accumulatedCommand);
+        auto tokens = lexer.tokenize();
+        int openBlocks = 0;
+        int closeBlocks = 0;
+        for (std::size_t i = 0; i < tokens.size(); ++i) {
+            auto t = tokens[i].type;
+            if (t == matforge::engine::TokenType::For ||
+                t == matforge::engine::TokenType::While ||
+                t == matforge::engine::TokenType::If ||
+                t == matforge::engine::TokenType::Function) {
+                openBlocks++;
+            } else if (t == matforge::engine::TokenType::End) {
+                bool isIndexEnd = false;
+                if (i > 0) {
+                    auto prev = tokens[i - 1].type;
+                    if (prev == matforge::engine::TokenType::LParen ||
+                        prev == matforge::engine::TokenType::Colon ||
+                        prev == matforge::engine::TokenType::Comma) {
+                        isIndexEnd = true;
+                    }
+                }
+                if (!isIndexEnd) {
+                    closeBlocks++;
+                }
+            }
+        }
+
+        blockDepth = std::max(0, openBlocks - closeBlocks);
+
+        if (blockDepth == 0 && !accumulatedCommand.empty()) {
+            auto result = interpreter.execute(accumulatedCommand);
+            if (!result.success) {
+                std::cout << "Error: " << result.errorMessage << "\n\n";
+            } else if (!result.output.empty()) {
+                std::cout << result.output;
+            }
+            accumulatedCommand.clear();
         }
     }
 
     return 0;
 }
-

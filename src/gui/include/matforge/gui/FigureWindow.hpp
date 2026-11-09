@@ -33,6 +33,10 @@ public:
     explicit FigureWindow(QWidget* parent = nullptr);
 
     void plot(const std::vector<double>& x, const std::vector<double>& y, const QString& title = "Figure 1");
+    void clearPlot();
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
 
 private slots:
     void onExportClicked();

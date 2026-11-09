@@ -43,10 +43,27 @@ void Workspace::remove(const std::string& name) {
 
 void Workspace::clear() {
     variables_.clear();
+    functions_.clear();
     initConstants();
     if (clearCallback_) {
         clearCallback_();
     }
+}
+
+void Workspace::defineFunction(std::string name, std::shared_ptr<FunctionDefStmt> func) {
+    functions_[std::move(name)] = std::move(func);
+}
+
+bool Workspace::hasFunction(const std::string& name) const {
+    return functions_.find(name) != functions_.end();
+}
+
+std::shared_ptr<FunctionDefStmt> Workspace::getFunction(const std::string& name) const {
+    auto it = functions_.find(name);
+    if (it != functions_.end()) {
+        return it->second;
+    }
+    return nullptr;
 }
 
 } // namespace matforge::engine

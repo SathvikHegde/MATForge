@@ -43,6 +43,7 @@ private:
 
     std::shared_ptr<matforge::engine::Workspace> workspace_;
     std::unique_ptr<matforge::engine::Interpreter> interpreter_;
+    QString accumulatedCommand_;
 
     QTabWidget* editorTabs_{nullptr};
     CommandWindow* commandWindow_{nullptr};

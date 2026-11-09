@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QPaintEvent>
+#include <QKeyEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -124,9 +125,11 @@ void FigureCanvas::paintEvent(QPaintEvent* /* event */) {
     }
 }
 
-FigureWindow::FigureWindow(QWidget* parent) : QWidget(parent) {
+FigureWindow::FigureWindow(QWidget* parent)
+    : QWidget(parent, Qt::Window | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint) {
     setWindowTitle("MATForge - Figure");
     resize(640, 480);
+    setAttribute(Qt::WA_QuitOnClose, false);
 
     auto* layout = new QVBoxLayout(this);
     canvas_ = new FigureCanvas(this);
@@ -135,14 +138,17 @@ FigureWindow::FigureWindow(QWidget* parent) : QWidget(parent) {
     auto* btnLayout = new QHBoxLayout();
     auto* exportBtn = new QPushButton("Export Image...", this);
     auto* clearBtn = new QPushButton("Clear", this);
+    auto* closeBtn = new QPushButton("Close", this);
 
     btnLayout->addStretch();
     btnLayout->addWidget(exportBtn);
     btnLayout->addWidget(clearBtn);
+    btnLayout->addWidget(closeBtn);
     layout->addLayout(btnLayout);
 
     connect(exportBtn, &QPushButton::clicked, this, &FigureWindow::onExportClicked);
     connect(clearBtn, &QPushButton::clicked, this, &FigureWindow::onClearClicked);
+    connect(closeBtn, &QPushButton::clicked, this, &QWidget::close);
 }
 
 void FigureWindow::plot(const std::vector<double>& x, const std::vector<double>& y, const QString& title) {
@@ -150,6 +156,18 @@ void FigureWindow::plot(const std::vector<double>& x, const std::vector<double>&
     show();
     raise();
     activateWindow();
+}
+
+void FigureWindow::clearPlot() {
+    canvas_->clearPlot();
+}
+
+void FigureWindow::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Escape) {
+        close();
+        return;
+    }
+    QWidget::keyPressEvent(event);
 }
 
 void FigureWindow::onExportClicked() {

@@ -101,6 +101,35 @@ private:
     std::unique_ptr<Expr> operand_;
 };
 
+// Range Expression: start:stop or start:step:stop
+class RangeExpr : public Expr {
+public:
+    RangeExpr(std::unique_ptr<Expr> start, std::unique_ptr<Expr> step, std::unique_ptr<Expr> stop)
+        : start_(std::move(start)), step_(std::move(step)), stop_(std::move(stop)) {}
+
+    const Expr& start() const { return *start_; }
+    bool hasStep() const { return step_ != nullptr; }
+    const Expr* step() const { return step_.get(); }
+    const Expr& stop() const { return *stop_; }
+
+private:
+    std::unique_ptr<Expr> start_;
+    std::unique_ptr<Expr> step_;
+    std::unique_ptr<Expr> stop_;
+};
+
+// Standalone colon index (e.g., A(:, 1))
+class ColonAllExpr : public Expr {
+public:
+    ColonAllExpr() = default;
+};
+
+// End index keyword (e.g., A(2:end))
+class EndExpr : public Expr {
+public:
+    EndExpr() = default;
+};
+
 // Function Call or Array Indexing: f(x, y)
 class CallExpr : public Expr {
 public:
@@ -135,6 +164,129 @@ public:
 private:
     std::string variableName_;
     std::unique_ptr<Expr> expr_;
+};
+
+// Subscripted assignment: A(1, 2) = val; or A(:, 1) = val;
+class SubscriptAssignStmt : public Statement {
+public:
+    SubscriptAssignStmt(std::string variableName, 
+                        std::vector<std::unique_ptr<Expr>> indices, 
+                        std::unique_ptr<Expr> expr, 
+                        bool suppress)
+        : variableName_(std::move(variableName)), 
+          indices_(std::move(indices)), 
+          expr_(std::move(expr)) {
+        suppressOutput = suppress;
+    }
+
+    const std::string& variableName() const { return variableName_; }
+    const std::vector<std::unique_ptr<Expr>>& indices() const { return indices_; }
+    const Expr& expr() const { return *expr_; }
+
+private:
+    std::string variableName_;
+    std::vector<std::unique_ptr<Expr>> indices_;
+    std::unique_ptr<Expr> expr_;
+};
+
+// For loop: for var = range ... end
+class ForStmt : public Statement {
+public:
+    ForStmt(std::string variableName, 
+            std::unique_ptr<Expr> rangeExpr, 
+            std::vector<std::shared_ptr<Statement>> body)
+        : variableName_(std::move(variableName)), 
+          rangeExpr_(std::move(rangeExpr)), 
+          body_(std::move(body)) {}
+
+    const std::string& variableName() const { return variableName_; }
+    const Expr& rangeExpr() const { return *rangeExpr_; }
+    const std::vector<std::shared_ptr<Statement>>& body() const { return body_; }
+
+private:
+    std::string variableName_;
+    std::unique_ptr<Expr> rangeExpr_;
+    std::vector<std::shared_ptr<Statement>> body_;
+};
+
+// While loop: while condition ... end
+class WhileStmt : public Statement {
+public:
+    WhileStmt(std::unique_ptr<Expr> condition, 
+              std::vector<std::shared_ptr<Statement>> body)
+        : condition_(std::move(condition)), 
+          body_(std::move(body)) {}
+
+    const Expr& condition() const { return *condition_; }
+    const std::vector<std::shared_ptr<Statement>>& body() const { return body_; }
+
+private:
+    std::unique_ptr<Expr> condition_;
+    std::vector<std::shared_ptr<Statement>> body_;
+};
+
+// If statement: if cond ... elseif cond ... else ... end
+struct IfBranch {
+    std::unique_ptr<Expr> condition;
+    std::vector<std::shared_ptr<Statement>> body;
+};
+
+class IfStmt : public Statement {
+public:
+    IfStmt(std::vector<IfBranch> branches, 
+           std::vector<std::shared_ptr<Statement>> elseBody)
+        : branches_(std::move(branches)), 
+          elseBody_(std::move(elseBody)) {}
+
+    const std::vector<IfBranch>& branches() const { return branches_; }
+    const std::vector<std::shared_ptr<Statement>>& elseBody() const { return elseBody_; }
+
+private:
+    std::vector<IfBranch> branches_;
+    std::vector<std::shared_ptr<Statement>> elseBody_;
+};
+
+// Loop control statements
+class BreakStmt : public Statement {
+public:
+    BreakStmt() = default;
+};
+
+class ContinueStmt : public Statement {
+public:
+    ContinueStmt() = default;
+};
+
+class ReturnStmt : public Statement {
+public:
+    explicit ReturnStmt(std::unique_ptr<Expr> expr = nullptr) : expr_(std::move(expr)) {}
+    const Expr* expr() const { return expr_.get(); }
+private:
+    std::unique_ptr<Expr> expr_;
+};
+
+// User function definition: function [out1, out2] = name(in1, in2) ... end
+class FunctionDefStmt : public Statement {
+public:
+    FunctionDefStmt(std::string functionName,
+                    std::vector<std::string> returnParams,
+                    std::vector<std::string> paramNames,
+                    std::vector<std::shared_ptr<Statement>> body)
+        : functionName_(std::move(functionName)),
+          returnParams_(std::move(returnParams)),
+          paramNames_(std::move(paramNames)),
+          body_(std::move(body)) {}
+
+    const std::string& functionName() const { return functionName_; }
+    const std::vector<std::string>& returnParams() const { return returnParams_; }
+    const std::vector<std::string>& paramNames() const { return paramNames_; }
+    const std::vector<std::shared_ptr<Statement>>& body() const { return body_; }
+
+private:
+    std::string functionName_;
+    std::vector<std::string> returnParams_;
+    std::vector<std::string> paramNames_;
+    std::vector<std::shared_ptr<Statement>> body_;
 };
 
 class ExpressionStmt : public Statement {

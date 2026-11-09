@@ -7,6 +7,7 @@
 #include "matforge/gui/FigureWindow.hpp"
 #include "matforge/engine/Interpreter.hpp"
 #include "matforge/engine/Workspace.hpp"
+#include "matforge/engine/Lexer.hpp"
 
 #include <QDockWidget>
 #include <QMenuBar>
@@ -34,6 +35,22 @@ MainWindow::MainWindow(QWidget* parent)
         if (commandWindow_) {
             commandWindow_->clearWindow();
         }
+    });
+
+    interpreter_->setCloseFigureCallback([this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            if (figureWindow_) {
+                figureWindow_->close();
+            }
+        }, Qt::QueuedConnection);
+    });
+
+    interpreter_->setClearFigureCallback([this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            if (figureWindow_) {
+                figureWindow_->clearPlot();
+            }
+        }, Qt::QueuedConnection);
     });
 
     onNewScript();
@@ -139,14 +156,14 @@ void MainWindow::setupToolbars() {
 
 void MainWindow::setupMenus() {
     auto* fileMenu = menuBar()->addMenu("&File");
-    fileMenu->addAction("New Script", this, &MainWindow::onNewScript, QKeySequence::New);
-    fileMenu->addAction("Open File...", this, &MainWindow::onOpenFile, QKeySequence::Open);
-    fileMenu->addAction("Save File", this, &MainWindow::onSaveFile, QKeySequence::Save);
+    fileMenu->addAction("New Script", QKeySequence::New, this, &MainWindow::onNewScript);
+    fileMenu->addAction("Open File...", QKeySequence::Open, this, &MainWindow::onOpenFile);
+    fileMenu->addAction("Save File", QKeySequence::Save, this, &MainWindow::onSaveFile);
     fileMenu->addSeparator();
-    fileMenu->addAction("Exit", this, &QWidget::close, QKeySequence::Quit);
+    fileMenu->addAction("Exit", QKeySequence::Quit, this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu("&Editor");
-    editMenu->addAction("Run Script", this, &MainWindow::onRunScript, QKeySequence(Qt::Key_F5));
+    editMenu->addAction("Run Script", QKeySequence(Qt::Key_F5), this, &MainWindow::onRunScript);
 
     auto* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("About MATForge", [this]() {
@@ -158,13 +175,19 @@ void MainWindow::setupMenus() {
 
 void MainWindow::onNewScript() {
     auto* editor = new CodeEditor(editorTabs_);
-    editor->setPlainText("% MATForge Sample Script\n"
-                         "A = [1, 2; 3, 4];\n"
-                         "b = [5; 6];\n"
-                         "x = A * b;\n"
-                         "disp('Solution vector:');\n"
-                         "disp(x);\n"
-                         "t = linspace(0, 6.28, 50);\n"
+    editor->setPlainText("% MATForge Sample Script (Phase 1 Features)\n"
+                         "% 1. Matrix Creation & Slicing\n"
+                         "M = [1, 2, 3; 4, 5, 6; 7, 8, 9];\n"
+                         "corner = M(2:end, end-1:end);\n"
+                         "\n"
+                         "% 2. Control Flow & Summation\n"
+                         "total = 0;\n"
+                         "for i = 1:5\n"
+                         "    total = total + i;\n"
+                         "end\n"
+                         "\n"
+                         "% 3. Colon Ranges & Sine Wave Plot\n"
+                         "t = 0:0.1:6.28;\n"
                          "y = sin(t);\n"
                          "plot(t, y);\n");
     int idx = editorTabs_->addTab(editor, QString("Untitled%1.m").arg(editorTabs_->count() + 1));
@@ -228,9 +251,47 @@ void MainWindow::onCommandSubmitted(const QString& command) {
         return;
     }
 
-    historyWidget_->addCommand(command);
+    accumulatedCommand_ += command + "\n";
 
-    auto result = interpreter_->execute(command.toStdString());
+    // Analyze block depth
+    matforge::engine::Lexer lexer(accumulatedCommand_.toStdString());
+    auto tokens = lexer.tokenize();
+    int openBlocks = 0;
+    int closeBlocks = 0;
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        auto t = tokens[i].type;
+        if (t == matforge::engine::TokenType::For ||
+            t == matforge::engine::TokenType::While ||
+            t == matforge::engine::TokenType::If ||
+            t == matforge::engine::TokenType::Function) {
+            openBlocks++;
+        } else if (t == matforge::engine::TokenType::End) {
+            bool isIndexEnd = false;
+            if (i > 0) {
+                auto prev = tokens[i - 1].type;
+                if (prev == matforge::engine::TokenType::LParen ||
+                    prev == matforge::engine::TokenType::Colon ||
+                    prev == matforge::engine::TokenType::Comma) {
+                    isIndexEnd = true;
+                }
+            }
+            if (!isIndexEnd) {
+                closeBlocks++;
+            }
+        }
+    }
+
+    if (openBlocks > closeBlocks) {
+        // Block is unclosed; wait for closing 'end'
+        return;
+    }
+
+    QString toExecute = accumulatedCommand_;
+    accumulatedCommand_.clear();
+
+    historyWidget_->addCommand(toExecute.trimmed());
+
+    auto result = interpreter_->execute(toExecute.toStdString());
     if (!result.success) {
         commandWindow_->appendError(QString::fromStdString(result.errorMessage));
     } else {

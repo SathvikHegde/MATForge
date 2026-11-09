@@ -39,6 +39,18 @@ enum class TokenType {
     Colon,          // :
     Newline,        // \n
 
+    // Keywords
+    For,
+    While,
+    If,
+    Else,
+    Elseif,
+    End,
+    Function,
+    Return,
+    Break,
+    Continue,
+
     // Special
     EndOfFile,
     Invalid
