@@ -18,6 +18,10 @@ Value::Value(const char* str) : data_(std::string(str)) {}
 
 Value::Value(bool b) : data_(b) {}
 
+Value::Value(FunctionHandle fn) : data_(std::make_shared<FunctionHandle>(std::move(fn))) {}
+
+Value::Value(std::shared_ptr<FunctionHandle> fn) : data_(std::move(fn)) {}
+
 bool Value::isEmpty() const noexcept {
     return std::holds_alternative<std::monostate>(data_);
 }
@@ -40,6 +44,10 @@ bool Value::isBool() const noexcept {
 
 bool Value::isNumeric() const noexcept {
     return isDouble() || isMatrix();
+}
+
+bool Value::isFunctionHandle() const noexcept {
+    return std::holds_alternative<std::shared_ptr<FunctionHandle>>(data_);
 }
 
 double Value::toDouble() const {
@@ -92,15 +100,28 @@ bool Value::toBool() const {
     return false;
 }
 
+const FunctionHandle& Value::toFunctionHandle() const {
+    if (isFunctionHandle()) {
+        const auto& ptr = std::get<std::shared_ptr<FunctionHandle>>(data_);
+        if (ptr && *ptr) return *ptr;
+    }
+    throw std::runtime_error("Value is not a valid function handle.");
+}
+
+Value Value::call(const std::vector<Value>& args) const {
+    return toFunctionHandle()(args);
+}
+
 std::string Value::typeName() const {
     if (isDouble() || isMatrix()) return "double";
     if (isString()) return "char";
     if (isBool()) return "logical";
+    if (isFunctionHandle()) return "function_handle";
     return "void";
 }
 
 std::string Value::sizeString() const {
-    if (isDouble()) return "1x1";
+    if (isDouble() || isFunctionHandle()) return "1x1";
     if (isMatrix()) {
         const auto& mat = std::get<Matrix>(data_);
         return std::to_string(mat.rows()) + "x" + std::to_string(mat.cols());
@@ -137,6 +158,9 @@ std::string Value::previewString() const {
     if (isBool()) {
         return std::get<bool>(data_) ? "true" : "false";
     }
+    if (isFunctionHandle()) {
+        return "@function_handle";
+    }
     return "";
 }
 
@@ -145,6 +169,7 @@ std::size_t Value::byteSize() const {
     if (isMatrix()) return sizeof(Matrix) + std::get<Matrix>(data_).size() * sizeof(double);
     if (isString()) return sizeof(std::string) + std::get<std::string>(data_).capacity();
     if (isBool()) return sizeof(bool);
+    if (isFunctionHandle()) return sizeof(std::shared_ptr<FunctionHandle>);
     return 0;
 }
 
@@ -165,6 +190,9 @@ std::string Value::formatOutput() const {
     }
     if (isBool()) {
         return std::get<bool>(data_) ? "    logical 1" : "    logical 0";
+    }
+    if (isFunctionHandle()) {
+        return "    @function_handle";
     }
     return "";
 }
@@ -235,6 +263,7 @@ bool Value::operator==(const Value& other) const {
     if (isMatrix()) return toMatrix() == other.toMatrix();
     if (isString()) return toStringValue() == other.toStringValue();
     if (isBool()) return toBool() == other.toBool();
+    if (isFunctionHandle()) return std::get<std::shared_ptr<FunctionHandle>>(data_) == std::get<std::shared_ptr<FunctionHandle>>(other.data_);
     return true;
 }
 

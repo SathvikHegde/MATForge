@@ -48,6 +48,28 @@
   - Static matrix generators: `zeros()`, `ones()`, `eye()`, `linspace()`, `colon` (`:`).
   - Dynamic `Value` type for MATLAB numbers, matrices, strings, and booleans.
 
+- **Scientific Computing & Numerical Algorithms (Phase 4)**:
+  - **Anonymous Functions & Handles**:
+    - First-class function handles: `@(x) expr`, `@(t, y) expr`, and named handles `@sin`, `@cos`.
+    - Local scope closure capture: closures capture snapshots of variables in workspace.
+    - Direct invocation syntax: `f = @(x) x.^2 - 4; val = f(3);`.
+  - **Equation Solvers & the Unified `solve` function**:
+    - `solve(A, b)` / `linsolve(A, b)`: Linear system solver $A x = b$ using Eigen QR decomposition.
+    - `fzero(fun, x0)`: Brent-Dekker root-finding method (combining bisection, secant, and inverse quadratic interpolation).
+    - `solve(fun, x0)` / `fsolve(fun, x0)`: Nonlinear system solver using Newton-Raphson with Levenberg-Marquardt damping and finite-difference Jacobian.
+  - **Numerical Calculus & Quadrature**:
+    - `integral(fun, a, b)`: Adaptive Simpson's quadrature for definite integrals $\int_a^b f(x) \, dx$.
+    - `trapz(y)` and `trapz(x, y)`: Composite trapezoidal numerical integration.
+    - `cumtrapz(y)` and `cumtrapz(x, y)`: Cumulative trapezoidal numerical integration.
+    - `diff(x, [n])`: Differences and approximate derivatives.
+    - `gradient(y, [h])`: Central finite-difference gradient with forward/backward boundaries.
+  - **Ordinary Differential Equation (ODE) Solvers**:
+    - `ode45(odefun, [t0, tf], y0)`: Runge-Kutta Dormand-Prince 5(4) adaptive step integrator with error control.
+    - `ode23(odefun, [t0, tf], y0)`: Bogacki-Shampine 3(2) adaptive step integrator.
+    - Multi-assignment syntax: `[t, y] = ode45(...)` returning time vector $t$ and state matrix $y$.
+  - **Unconstrained Optimization**:
+    - `fminsearch(fun, x0)`: Nelder-Mead simplex multivariable unconstrained minimization.
+
 - **Interpreter & Parser (`matforge_engine`)**:
   - Full lexer, parser, and Abstract Syntax Tree (AST).
   - Variable assignments (`A = [1, 2; 3, 4]`).
@@ -321,6 +343,55 @@ title('Damped Exponential')
 % - Click & Drag: Pan axes
 % - Hover: Data Cursor showing exact (X, Y) coordinates
 % - Double-Click: Reset View / Auto-scale
+```
+
+### Numerical Calculus, ODEs & Solvers (Phase 4)
+```matlab
+% 1. Anonymous Functions & Named Handles
+sq = @(x) x.^2 - 4;
+val = sq(3)                  % Returns 5.0
+
+add_closure = @(x, y) x + 2*y;
+res = add_closure(3, 4)      % Returns 11.0
+
+h_sin = @sin;
+s0 = h_sin(0)                % Returns 0.0
+
+% 2. Definite Integration (Adaptive Simpson Quadrature)
+q = integral(@(x) x.^2, 0, 1) % Returns 0.333333...
+q2 = integral(@(x) sin(x), 0, pi) % Returns 2.0
+
+% 3. Numerical Root Finding (Brent's Method)
+r = fzero(@(x) x.^2 - 4, 3)  % Finds root at 2.0
+
+% 4. Unified Equation Solving (Linear & Nonlinear)
+% Linear System Ax = b:
+A = [3, 1; 1, 2];
+b = [9; 8];
+x_lin = solve(A, b)          % Returns [2.0; 3.0]
+x_lin2 = linsolve(A, b)      % Equivalent to solve(A, b) and A \ b
+
+% Nonlinear System / Equation f(x) = 0:
+x_root = solve(@(x) x.^2 - 9, 2)  % Returns 3.0
+x_fsolve = fsolve(@(x) x.^3 - 27, 2) % Returns 3.0
+
+% 5. Ordinary Differential Equations (ode45 & ode23)
+% Solve dy/dt = -2y on [0, 1] with y(0) = 1
+[t, y] = ode45(@(t, y) -2*y, [0, 1], 1);
+y_final = y(end)             % Returns e^(-2) = 0.1353...
+
+% Single return returns combined [t, y] matrix
+sol = ode45(@(t, y) -2*y, [0, 1], 1);
+plot(sol(:, 1), sol(:, 2), 'b-'); % Directly plot trajectory!
+
+% 6. Numerical Calculus (diff, gradient, trapz, cumtrapz)
+d = diff([1, 4, 9, 16])      % Returns [3, 5, 7]
+g = gradient([1, 2, 4, 7, 11]) % Central differences: [1, 1.5, 2.5, 3.5, 4]
+tz = trapz([0, 1, 2, 3], [0, 1, 4, 9])     % Returns 9.5
+ctz = cumtrapz([0, 1, 2, 3], [0, 1, 4, 9]) % Returns [0, 0.5, 3.0, 9.5]
+
+% 7. Unconstrained Optimization (Nelder-Mead Simplex)
+opt_x = fminsearch(@(x) (x - 3).^2 + 4, 0) % Finds minimum at x = 3.0
 ```
 
 ### Variable Spreadsheet Inspector (Phase 3)

@@ -32,6 +32,7 @@ std::string Token::typeName() const {
         case TokenType::Comma: return ",";
         case TokenType::Semicolon: return ";";
         case TokenType::Colon: return ":";
+        case TokenType::At: return "@";
         case TokenType::Newline: return "Newline";
         case TokenType::For: return "for";
         case TokenType::While: return "while";

@@ -48,6 +48,34 @@ private:
     std::vector<Row> rows_;
 };
 
+// Function Handle / Anonymous Function: @(x) x.^2 or @sin
+class FunctionHandleExpr : public Expr {
+public:
+    FunctionHandleExpr(std::vector<std::string> paramNames, 
+                       std::shared_ptr<Expr> body,
+                       std::string representation = "")
+        : paramNames_(std::move(paramNames)), 
+          body_(std::move(body)),
+          representation_(std::move(representation)) {}
+
+    explicit FunctionHandleExpr(std::string functionName)
+        : namedFunction_(std::move(functionName)), isNamed_(true) {}
+
+    bool isNamed() const { return isNamed_; }
+    const std::string& namedFunction() const { return namedFunction_; }
+    const std::vector<std::string>& paramNames() const { return paramNames_; }
+    const Expr* body() const { return body_.get(); }
+    std::shared_ptr<Expr> sharedBody() const { return body_; }
+    const std::string& representation() const { return representation_; }
+
+private:
+    std::vector<std::string> paramNames_;
+    std::shared_ptr<Expr> body_;
+    std::string namedFunction_;
+    std::string representation_;
+    bool isNamed_{false};
+};
+
 // Binary Expressions
 enum class BinaryOp {
     Add,

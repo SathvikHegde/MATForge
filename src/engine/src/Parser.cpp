@@ -557,6 +557,30 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         return std::make_unique<ColonAllExpr>();
     }
 
+    if (match(TokenType::At)) {
+        // Function handle: @(x) expr or @sin
+        if (match(TokenType::LParen)) {
+            std::vector<std::string> paramNames;
+            if (!check(TokenType::RParen)) {
+                do {
+                    if (!check(TokenType::Identifier)) {
+                        throw std::runtime_error("Expected parameter name in anonymous function.");
+                    }
+                    paramNames.push_back(advance().text);
+                } while (match(TokenType::Comma));
+            }
+            if (!match(TokenType::RParen)) {
+                throw std::runtime_error("Expected ')' after anonymous function parameters.");
+            }
+            auto body = parseExpression();
+            return std::make_unique<FunctionHandleExpr>(std::move(paramNames), std::move(body));
+        } else if (match(TokenType::Identifier)) {
+            return std::make_unique<FunctionHandleExpr>(previous().text);
+        } else {
+            throw std::runtime_error("Expected '(' or function name after '@'.");
+        }
+    }
+
     if (match(TokenType::LParen)) {
         auto expr = parseExpression();
         if (!match(TokenType::RParen)) {

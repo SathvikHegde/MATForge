@@ -225,6 +225,7 @@ std::vector<Token> Lexer::tokenize() {
             case ',': tokens.push_back(Token{TokenType::Comma, ",", 0.0, startLine, startCol}); break;
             case ';': tokens.push_back(Token{TokenType::Semicolon, ";", 0.0, startLine, startCol}); break;
             case ':': tokens.push_back(Token{TokenType::Colon, ":", 0.0, startLine, startCol}); break;
+            case '@': tokens.push_back(Token{TokenType::At, "@", 0.0, startLine, startCol}); break;
             case '\n': tokens.push_back(Token{TokenType::Newline, "\n", 0.0, startLine, startCol}); break;
             default:
                 tokens.push_back(Token{TokenType::Invalid, std::string(1, ch), 0.0, startLine, startCol});

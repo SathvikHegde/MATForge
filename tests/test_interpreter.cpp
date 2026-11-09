@@ -385,6 +385,119 @@ void testPhase3GraphicsCommands() {
     std::cout << "[PASS] Phase 3 Graphics and Plotting commands (plot, bar, stem, hold, grid, title, labels, subplot)\n";
 }
 
+void testPhase4() {
+    matforge::engine::Interpreter interp;
+
+    // 1. Anonymous functions and invocation
+    auto res1 = interp.execute(
+        "f = @(x) x.^2 - 4;\n"
+        "val = f(3);\n"
+        "g = @(x, y) x + 2*y;\n"
+        "val2 = g(3, 4);\n"
+        "h = @sin;\n"
+        "val3 = h(0);\n"
+    );
+    assert(res1.success);
+    assert(interp.workspace()->get("val").toDouble() == 5.0);
+    assert(interp.workspace()->get("val2").toDouble() == 11.0);
+    assert(interp.workspace()->get("val3").toDouble() == 0.0);
+
+    // Closure test: workspace snapshot capture
+    auto resClos = interp.execute(
+        "c = 10;\n"
+        "f_clos = @(x) x + c;\n"
+        "c = 50;\n"
+        "clos_val = f_clos(5);\n"
+    );
+    assert(resClos.success);
+    assert(interp.workspace()->get("clos_val").toDouble() == 15.0);
+
+    // 2. Numerical Quadrature: integral
+    auto resInt = interp.execute(
+        "q1 = integral(@(x) x.^2, 0, 1);\n"
+        "q2 = integral(@(x) sin(x), 0, 3.141592653589793);\n"
+    );
+    assert(resInt.success);
+    assert(std::abs(interp.workspace()->get("q1").toDouble() - 1.0 / 3.0) < 1e-6);
+    assert(std::abs(interp.workspace()->get("q2").toDouble() - 2.0) < 1e-6);
+
+    // 3. Root finding: fzero
+    auto resZero = interp.execute(
+        "r1 = fzero(@(x) x.^2 - 4, 3);\n"
+        "r2 = fzero(@(x) cos(x), 1.5);\n"
+    );
+    assert(resZero.success);
+    assert(std::abs(interp.workspace()->get("r1").toDouble() - 2.0) < 1e-6);
+    assert(std::abs(interp.workspace()->get("r2").toDouble() - 3.141592653589793 / 2.0) < 1e-6);
+
+    // 4. Equation solvers: solve, linsolve, fsolve
+    auto resSolvers = interp.execute(
+        "A = [2, 1; 1, 3];\n"
+        "b = [5; 5];\n"
+        "x_lin = linsolve(A, b);\n"
+        "x_solve = solve(A, b);\n"
+        "x_scalar = solve(4, 12);\n"
+        "x_nonlin = solve(@(x) x.^2 - 9, 2);\n"
+        "x_fsolve = fsolve(@(x) x.^3 - 27, 2);\n"
+    );
+    assert(resSolvers.success);
+    auto xLin = interp.workspace()->get("x_lin").toMatrix();
+    assert(std::abs(xLin(0, 0) - 2.0) < 1e-8 && std::abs(xLin(1, 0) - 1.0) < 1e-8);
+    auto xSolve = interp.workspace()->get("x_solve").toMatrix();
+    assert(std::abs(xSolve(0, 0) - 2.0) < 1e-8 && std::abs(xSolve(1, 0) - 1.0) < 1e-8);
+    assert(interp.workspace()->get("x_scalar").toDouble() == 3.0);
+    assert(std::abs(interp.workspace()->get("x_nonlin").toDouble() - 3.0) < 1e-4);
+    assert(std::abs(interp.workspace()->get("x_fsolve").toDouble() - 3.0) < 1e-4);
+
+    // 5. Calculus: diff & gradient
+    auto resCalc = interp.execute(
+        "d1 = diff([1, 4, 9, 16]);\n"
+        "d2 = diff([1, 4, 9, 16], 2);\n"
+        "g = gradient([1, 2, 4, 7, 11]);\n"
+    );
+    assert(resCalc.success);
+    auto d1 = interp.workspace()->get("d1").toMatrix();
+    assert(d1.cols() == 3 && d1(0, 0) == 3.0 && d1(0, 1) == 5.0 && d1(0, 2) == 7.0);
+    auto d2 = interp.workspace()->get("d2").toMatrix();
+    assert(d2.cols() == 2 && d2(0, 0) == 2.0 && d2(0, 1) == 2.0);
+    auto g = interp.workspace()->get("g").toMatrix();
+    assert(g.cols() == 5 && g(0, 0) == 1.0 && g(0, 1) == 1.5 && g(0, 2) == 2.5 && g(0, 3) == 3.5 && g(0, 4) == 4.0);
+
+    // 6. Trapezoidal integration: trapz & cumtrapz
+    auto resTrap = interp.execute(
+        "tz = trapz([0, 1, 2, 3], [0, 1, 4, 9]);\n"
+        "ctz = cumtrapz([0, 1, 2, 3], [0, 1, 4, 9]);\n"
+    );
+    assert(resTrap.success);
+    assert(std::abs(interp.workspace()->get("tz").toDouble() - 9.5) < 1e-8);
+    auto ctz = interp.workspace()->get("ctz").toMatrix();
+    assert(ctz.cols() == 4 && std::abs(ctz(0, 3) - 9.5) < 1e-8);
+
+    // 7. Unconstrained Optimization: fminsearch
+    auto resOpt = interp.execute(
+        "opt_x = fminsearch(@(x) (x - 3).^2 + 4, 0);\n"
+    );
+    assert(resOpt.success);
+    assert(std::abs(interp.workspace()->get("opt_x").toDouble() - 3.0) < 1e-4);
+
+    // 8. ODE Solvers: ode45 & ode23
+    auto resOde = interp.execute(
+        "[t45, y45] = ode45(@(t, y) -2*y, [0, 1], 1);\n"
+        "y45_final = y45(end);\n"
+        "[t23, y23] = ode23(@(t, y) -2*y, [0, 1], 1);\n"
+        "y23_final = y23(end);\n"
+        "sol_single = ode45(@(t, y) -2*y, [0, 1], 1);\n"
+    );
+    assert(resOde.success);
+    double expectedOde = std::exp(-2.0);
+    assert(std::abs(interp.workspace()->get("y45_final").toDouble() - expectedOde) < 1e-3);
+    assert(std::abs(interp.workspace()->get("y23_final").toDouble() - expectedOde) < 1e-2);
+    auto solSingle = interp.workspace()->get("sol_single").toMatrix();
+    assert(solSingle.cols() == 2 && solSingle.rows() > 5);
+
+    std::cout << "[PASS] Phase 4 (Function Handles, solve, linsolve, fzero, fsolve, integral, diff, gradient, trapz, cumtrapz, fminsearch, ode45, ode23)\n";
+}
+
 int main() {
     std::cout << "Running Interpreter unit tests...\n";
     testAssignmentsAndMath();
@@ -395,6 +508,7 @@ int main() {
     testUserFunctions();
     testPhase2Interpreter();
     testPhase3GraphicsCommands();
+    testPhase4();
     std::cout << "All Interpreter unit tests passed!\n";
     return 0;
 }

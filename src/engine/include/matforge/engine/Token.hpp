@@ -39,6 +39,7 @@ enum class TokenType {
     Comma,          // ,
     Semicolon,      // ;
     Colon,          // :
+    At,             // @ (function handle)
     Newline,        // \n
 
     // Keywords

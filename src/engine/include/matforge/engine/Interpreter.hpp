@@ -63,6 +63,8 @@ private:
     matforge::core::Value evaluateBinary(const BinaryExpr& expr);
     matforge::core::Value evaluateUnary(const UnaryExpr& expr);
     matforge::core::Value evaluateCall(const CallExpr& expr);
+    matforge::core::Value evaluateFunctionHandle(const FunctionHandleExpr& expr);
+    matforge::core::Value invokeFunction(const std::string& name, const std::vector<matforge::core::Value>& argValues);
     matforge::core::Value evaluateRange(const RangeExpr& expr);
     matforge::core::Value evaluateEnd(const EndExpr& expr);
 

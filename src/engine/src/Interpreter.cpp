@@ -214,6 +214,14 @@ void Interpreter::executeMultiAssign(const MultiAssignmentStmt& stmt, std::ostri
             auto [Q, R] = args[0].toMatrix().qr();
             returnValues.push_back(matforge::core::Value(Q));
             returnValues.push_back(matforge::core::Value(R));
+        } else if (name == "ode45" && args.size() >= 3) {
+            auto odeRes = matforge::core::math::ode45(args[0], args[1], args[2]);
+            returnValues.push_back(matforge::core::Value(odeRes.t));
+            returnValues.push_back(matforge::core::Value(odeRes.y));
+        } else if (name == "ode23" && args.size() >= 3) {
+            auto odeRes = matforge::core::math::ode23(args[0], args[1], args[2]);
+            returnValues.push_back(matforge::core::Value(odeRes.t));
+            returnValues.push_back(matforge::core::Value(odeRes.y));
         } else if (workspace_->hasFunction(name)) {
             // User-defined function with multiple return params
             auto func = workspace_->getFunction(name);
@@ -455,6 +463,9 @@ matforge::core::Value Interpreter::evaluate(const Expr& expr) {
     if (const auto* call = dynamic_cast<const CallExpr*>(&expr)) {
         return evaluateCall(*call);
     }
+    if (const auto* fnHandle = dynamic_cast<const FunctionHandleExpr*>(&expr)) {
+        return evaluateFunctionHandle(*fnHandle);
+    }
     throw std::runtime_error("Unknown expression node in evaluation.");
 }
 
@@ -636,9 +647,16 @@ matforge::core::Value Interpreter::evaluateUnary(const UnaryExpr& expr) {
 matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
     const std::string& name = expr.callee();
 
-    // 1. Array Indexing on existing workspace variables
+    // 1. Array Indexing or direct variable Function Handle call
     if (workspace_->has(name)) {
         const auto& existingVal = workspace_->get(name);
+        if (existingVal.isFunctionHandle()) {
+            std::vector<matforge::core::Value> argValues;
+            for (const auto& arg : expr.args()) {
+                argValues.push_back(evaluate(*arg));
+            }
+            return existingVal.call(argValues);
+        }
         if (existingVal.isNumeric()) {
             matforge::core::Matrix mat = existingVal.toMatrix();
 
@@ -673,20 +691,72 @@ matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
         }
     }
 
+    // Evaluate arguments for function call
+    std::vector<matforge::core::Value> argValues;
+    for (const auto& arg : expr.args()) {
+        argValues.push_back(evaluate(*arg));
+    }
+
+    return invokeFunction(name, argValues);
+}
+
+matforge::core::Value Interpreter::evaluateFunctionHandle(const FunctionHandleExpr& expr) {
+    if (expr.isNamed()) {
+        std::string fnName = expr.namedFunction();
+        auto handle = [this, fnName](const std::vector<matforge::core::Value>& args) -> matforge::core::Value {
+            return this->invokeFunction(fnName, args);
+        };
+        return matforge::core::Value(handle);
+    } else {
+        auto closureWs = std::make_shared<Workspace>(*workspace_);
+        auto body = expr.sharedBody();
+        auto params = expr.paramNames();
+
+        auto handle = [closureWs, body, params, this](const std::vector<matforge::core::Value>& args) -> matforge::core::Value {
+            auto localWs = std::make_shared<Workspace>(*closureWs);
+            for (std::size_t i = 0; i < params.size(); ++i) {
+                if (i < args.size()) {
+                    localWs->set(params[i], args[i]);
+                } else {
+                    localWs->set(params[i], matforge::core::Value());
+                }
+            }
+            Interpreter localInterp(localWs);
+            localInterp.setPlotCallback(plotCallback_);
+            localInterp.setHoldCallback(holdCallback_);
+            localInterp.setGridCallback(gridCallback_);
+            localInterp.setTitleCallback(titleCallback_);
+            localInterp.setLabelCallback(labelCallback_);
+            localInterp.setLegendCallback(legendCallback_);
+            localInterp.setSubplotCallback(subplotCallback_);
+            localInterp.setClearScreenCallback(clearScreenCallback_);
+            localInterp.setCloseFigureCallback(closeFigureCallback_);
+            localInterp.setClearFigureCallback(clearFigureCallback_);
+
+            return localInterp.evaluate(*body);
+        };
+        return matforge::core::Value(handle);
+    }
+}
+
+matforge::core::Value Interpreter::invokeFunction(const std::string& name, const std::vector<matforge::core::Value>& argValues) {
+    // 1. Variable holding a function handle
+    if (workspace_->has(name) && workspace_->get(name).isFunctionHandle()) {
+        return workspace_->get(name).call(argValues);
+    }
+
     // 2. User-Defined Functions
     if (workspace_->hasFunction(name)) {
         auto func = workspace_->getFunction(name);
         auto localWs = std::make_shared<Workspace>();
 
-        // Copy existing defined functions to local workspace
         for (const auto& [fName, fDef] : workspace_->functions()) {
             localWs->defineFunction(fName, fDef);
         }
 
-        // Evaluate argument expressions and bind to parameters
         for (std::size_t i = 0; i < func->paramNames().size(); ++i) {
-            if (i < expr.args().size()) {
-                localWs->set(func->paramNames()[i], evaluate(*expr.args()[i]));
+            if (i < argValues.size()) {
+                localWs->set(func->paramNames()[i], argValues[i]);
             } else {
                 localWs->set(func->paramNames()[i], matforge::core::Value());
             }
@@ -721,12 +791,6 @@ matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
             return localWs->get(func->returnParams()[0]);
         }
         return matforge::core::Value();
-    }
-
-    // Evaluate arguments for built-in functions
-    std::vector<matforge::core::Value> argValues;
-    for (const auto& arg : expr.args()) {
-        argValues.push_back(evaluate(*arg));
     }
 
     // 3. Built-in Mathematical Functions
@@ -1018,6 +1082,105 @@ matforge::core::Value Interpreter::evaluateCall(const CallExpr& expr) {
         std::string path = argValues[0].isString() ? argValues[0].toStringValue() : "";
         argValues[1].toMatrix().writeCSV(path);
         return matforge::core::Value();
+    }
+
+    // Phase 4: Numerical Methods, Calculus, ODEs, Optimization & Equation Solvers
+    if (name == "solve") {
+        if (argValues.size() == 2) {
+            return matforge::core::math::solve(argValues[0], argValues[1]);
+        }
+        if (argValues.size() == 1) {
+            return matforge::core::math::solve(argValues[0], matforge::core::Value(0.0));
+        }
+        throw std::runtime_error("solve requires 1 or 2 arguments: solve(A, b) or solve(@fun, x0).");
+    }
+    if (name == "linsolve") {
+        if (argValues.size() != 2) throw std::runtime_error("linsolve requires 2 arguments (A, b).");
+        return matforge::core::math::linsolve(argValues[0], argValues[1]);
+    }
+    if (name == "fzero") {
+        if (argValues.size() < 2) throw std::runtime_error("fzero requires at least 2 arguments (fun, x0).");
+        double tol = (argValues.size() >= 3) ? argValues[2].toDouble() : 1e-12;
+        return matforge::core::Value(matforge::core::math::fzero(argValues[0], argValues[1].toDouble(), tol));
+    }
+    if (name == "fsolve") {
+        if (argValues.size() < 2) throw std::runtime_error("fsolve requires at least 2 arguments (fun, x0).");
+        double tol = (argValues.size() >= 3) ? argValues[2].toDouble() : 1e-8;
+        int maxIter = (argValues.size() >= 4) ? static_cast<int>(argValues[3].toDouble()) : 200;
+        return matforge::core::math::fsolve(argValues[0], argValues[1], tol, maxIter);
+    }
+    if (name == "integral") {
+        if (argValues.size() < 3) throw std::runtime_error("integral requires at least 3 arguments (fun, a, b).");
+        double a = argValues[1].toDouble();
+        double b = argValues[2].toDouble();
+        double tol = (argValues.size() >= 4) ? argValues[3].toDouble() : 1e-10;
+        return matforge::core::Value(matforge::core::math::integral(argValues[0], a, b, tol));
+    }
+    if (name == "trapz") {
+        if (argValues.size() == 1) {
+            return matforge::core::Value(matforge::core::math::trapz(argValues[0].toMatrix()));
+        }
+        if (argValues.size() == 2) {
+            return matforge::core::Value(matforge::core::math::trapz(argValues[0].toMatrix(), argValues[1].toMatrix()));
+        }
+        throw std::runtime_error("trapz requires 1 or 2 arguments.");
+    }
+    if (name == "cumtrapz") {
+        if (argValues.size() == 1) {
+            return matforge::core::Value(matforge::core::math::cumtrapz(argValues[0].toMatrix()));
+        }
+        if (argValues.size() == 2) {
+            return matforge::core::Value(matforge::core::math::cumtrapz(argValues[0].toMatrix(), argValues[1].toMatrix()));
+        }
+        throw std::runtime_error("cumtrapz requires 1 or 2 arguments.");
+    }
+    if (name == "diff") {
+        if (argValues.size() == 1) {
+            return matforge::core::Value(matforge::core::math::diff(argValues[0].toMatrix()));
+        }
+        if (argValues.size() == 2) {
+            return matforge::core::Value(matforge::core::math::diff(argValues[0].toMatrix(), static_cast<int>(argValues[1].toDouble())));
+        }
+        throw std::runtime_error("diff requires 1 or 2 arguments.");
+    }
+    if (name == "gradient") {
+        if (argValues.size() == 1) {
+            return matforge::core::Value(matforge::core::math::gradient(argValues[0].toMatrix()));
+        }
+        if (argValues.size() == 2) {
+            return matforge::core::Value(matforge::core::math::gradient(argValues[0].toMatrix(), argValues[1].toDouble()));
+        }
+        throw std::runtime_error("gradient requires 1 or 2 arguments.");
+    }
+    if (name == "fminsearch") {
+        if (argValues.size() < 2) throw std::runtime_error("fminsearch requires at least 2 arguments (fun, x0).");
+        double tol = (argValues.size() >= 3) ? argValues[2].toDouble() : 1e-6;
+        int maxIter = (argValues.size() >= 4) ? static_cast<int>(argValues[3].toDouble()) : 2000;
+        return matforge::core::math::fminsearch(argValues[0], argValues[1], tol, maxIter);
+    }
+    if (name == "ode45") {
+        if (argValues.size() < 3) throw std::runtime_error("ode45 requires at least 3 arguments (odefun, tspan, y0).");
+        auto odeRes = matforge::core::math::ode45(argValues[0], argValues[1], argValues[2]);
+        matforge::core::Matrix combined(odeRes.t.rows(), odeRes.t.cols() + odeRes.y.cols());
+        for (std::size_t i = 0; i < odeRes.t.rows(); ++i) {
+            combined(i, 0) = odeRes.t(i, 0);
+            for (std::size_t j = 0; j < odeRes.y.cols(); ++j) {
+                combined(i, 1 + j) = odeRes.y(i, j);
+            }
+        }
+        return matforge::core::Value(combined);
+    }
+    if (name == "ode23") {
+        if (argValues.size() < 3) throw std::runtime_error("ode23 requires at least 3 arguments (odefun, tspan, y0).");
+        auto odeRes = matforge::core::math::ode23(argValues[0], argValues[1], argValues[2]);
+        matforge::core::Matrix combined(odeRes.t.rows(), odeRes.t.cols() + odeRes.y.cols());
+        for (std::size_t i = 0; i < odeRes.t.rows(); ++i) {
+            combined(i, 0) = odeRes.t(i, 0);
+            for (std::size_t j = 0; j < odeRes.y.cols(); ++j) {
+                combined(i, 1 + j) = odeRes.y(i, j);
+            }
+        }
+        return matforge::core::Value(combined);
     }
 
     // Display & Graphics (Phase 3)

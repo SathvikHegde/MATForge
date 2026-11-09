@@ -1,4 +1,5 @@
 #include "matforge/core/Matrix.hpp"
+#include "matforge/core/MathUtils.hpp"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -184,6 +185,60 @@ void testPhase2SignalAndIO() {
     std::cout << "[PASS] Signal processing (conv, FFT, IFFT) and CSV I/O\n";
 }
 
+void testPhase4MathUtils() {
+    using namespace matforge::core;
+
+    // 1. diff & gradient
+    Matrix v = {{1.0, 4.0, 9.0, 16.0}};
+    Matrix d = math::diff(v);
+    assert(d.size() == 3);
+    assert(d(0, 0) == 3.0 && d(0, 1) == 5.0 && d(0, 2) == 7.0);
+
+    Matrix g = math::gradient(v, 1.0);
+    assert(g.size() == 4);
+    assert(g(0, 0) == 3.0 && g(0, 1) == 4.0 && g(0, 2) == 6.0 && g(0, 3) == 7.0);
+
+    // 2. trapz & cumtrapz
+    Matrix x = {{0.0, 1.0, 2.0, 3.0}};
+    Matrix y = {{0.0, 1.0, 4.0, 9.0}};
+    double tz = math::trapz(x, y);
+    assert(std::abs(tz - 9.5) < 1e-9);
+
+    Matrix ctz = math::cumtrapz(x, y);
+    assert(ctz.size() == 4 && std::abs(ctz(0, 3) - 9.5) < 1e-9);
+
+    // 3. Adaptive Simpson Quadrature
+    double q = math::integral([](double t) { return t * t; }, 0.0, 1.0);
+    assert(std::abs(q - 1.0 / 3.0) < 1e-8);
+
+    // 4. Brent Root Finding
+    double root = math::fzero([](double t) { return t * t - 4.0; }, 3.0);
+    assert(std::abs(root - 2.0) < 1e-8);
+
+    // 5. Newton-Raphson nonlinear solver (fsolve)
+    Matrix x0 = {{2.0}};
+    Matrix sol = math::fsolve([](const Matrix& m) { return Matrix({{m(0, 0) * m(0, 0) * m(0, 0) - 27.0}}); }, x0);
+    assert(std::abs(sol(0, 0) - 3.0) < 1e-6);
+
+    // 6. Nelder-Mead Optimization (fminsearch)
+    Matrix opt = math::fminsearch([](const Matrix& m) { return (m(0, 0) - 5.0) * (m(0, 0) - 5.0) + 2.0; }, x0);
+    assert(std::abs(opt(0, 0) - 5.0) < 1e-5);
+
+    // 7. ODE Solvers (ode45 & ode23)
+    Matrix y0 = {{1.0}};
+    auto res45 = math::ode45([](double /*t*/, const Matrix& yVal) { return Matrix({{-2.0 * yVal(0, 0)}}); }, 0.0, 1.0, y0);
+    assert(res45.t.rows() > 5);
+    double finalY45 = res45.y(res45.y.rows() - 1, 0);
+    assert(std::abs(finalY45 - std::exp(-2.0)) < 1e-3);
+
+    auto res23 = math::ode23([](double /*t*/, const Matrix& yVal) { return Matrix({{-2.0 * yVal(0, 0)}}); }, 0.0, 1.0, y0);
+    assert(res23.t.rows() > 5);
+    double finalY23 = res23.y(res23.y.rows() - 1, 0);
+    assert(std::abs(finalY23 - std::exp(-2.0)) < 1e-2);
+
+    std::cout << "[PASS] MathUtils (diff, gradient, trapz, cumtrapz, integral, fzero, fsolve, fminsearch, ode45, ode23)\n";
+}
+
 int main() {
     std::cout << "Running Matrix unit tests...\n";
     testConstructorsAndIdentity();
@@ -191,6 +246,7 @@ int main() {
     testPhase2LinearAlgebra();
     testPhase2StatsAndRandom();
     testPhase2SignalAndIO();
+    testPhase4MathUtils();
     std::cout << "All Matrix unit tests passed!\n";
     return 0;
 }
