@@ -10,7 +10,15 @@ int main(int argc, char* argv[]) {
 
     std::cout << "========================================================\n";
     std::cout << "  MATForge Interactive CLI v0.1.0\n";
-    std::cout << "  MATLAB Clone built with C++20 & MSVC\n";
+#if defined(_MSC_VER)
+    std::cout << "  MATLAB Clone built with C++20 (MSVC)\n";
+#elif defined(__clang__)
+    std::cout << "  MATLAB Clone built with C++20 (Clang)\n";
+#elif defined(__GNUC__)
+    std::cout << "  MATLAB Clone built with C++20 (GCC)\n";
+#else
+    std::cout << "  MATLAB Clone built with C++20\n";
+#endif
     std::cout << "  Type 'help' for commands, 'exit' or 'quit' to close.\n";
     std::cout << "========================================================\n\n";
 

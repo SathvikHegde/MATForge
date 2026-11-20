@@ -1,6 +1,6 @@
 # MATForge
 
-**MATForge** is a high-performance MATLAB clone desktop application written in **C++20** and **Qt 6**, designed and configured for **MSVC (Visual Studio 2022)** and **CMake**.
+**MATForge** is a high-performance MATLAB clone desktop application written in **C++20** and **Qt 6**, designed and configured for **Linux / WSL** (GCC, Clang) and **Windows** (MSVC, Visual Studio 2022) with **CMake**.
 
 ---
 
@@ -91,6 +91,8 @@ MATForge/
 ├── .gitignore                  # Git ignore rules for MSVC, CMake, and Qt
 ├── README.md                   # Project documentation
 ├── scripts/
+│   ├── build_linux.sh          # One-click build and test script for Linux / WSL
+│   ├── install_qt_linux.sh     # Qt 6 installer and WSL guide for Linux
 │   ├── install_qt.ps1          # Automated Qt 6 installer for MSVC via aqtinstall
 │   └── build_vs2022.ps1        # One-click build script for VS 2022
 ├── src/
@@ -136,14 +138,65 @@ MATForge/
 
 ## 🚀 Getting Started
 
-### 1. Prerequisites
+### A. Linux & WSL (Windows Subsystem for Linux)
+
+#### 1. Prerequisites (Ubuntu / Debian / WSL)
+Install the essential C++20 build tools:
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake ninja-build
+
+# (Optional) To build the Qt 6 GUI IDE ('matforge_app'):
+sudo apt install -y qt6-base-dev libgl1-mesa-dev
+```
+
+*(Note: If Qt 6 is not installed, MATForge will automatically build the core math engine, parser, CLI REPL `matforge_cli`, and unit tests).*
+
+#### 2. Quick One-Click Build & Test
+Use the included automated build script:
+```bash
+# Configure, build with GCC/Ninja, and run unit tests:
+./scripts/build_linux.sh -t
+
+# Or build Release configuration:
+./scripts/build_linux.sh --config Release -t
+```
+
+#### 3. Building with CMake Presets
+```bash
+# Configure with Ninja Debug preset
+cmake --preset linux-debug
+
+# Build all targets
+cmake --build --preset linux-debug
+
+# Run tests
+ctest --preset linux-debug --output-on-failure
+```
+
+#### 4. Running on Linux & WSL
+- **Interactive CLI REPL**:
+  ```bash
+  ./build/linux-debug/bin/matforge_cli
+  ```
+- **Desktop GUI Application** *(requires Qt 6)*:
+  ```bash
+  ./build/linux-debug/bin/matforge_app
+  ```
+  > **WSL Display Note**: On Windows 11 with WSL 2, **WSLg** works automatically out of the box to render GUI windows on your Windows desktop. On older WSL 2 / Windows 10 setups, start an X Server (like VcXsrv) and set `export DISPLAY=$(ip route | awk '/default/ { print $3 }'):0`.
+
+---
+
+### B. Windows (MSVC & Visual Studio 2022)
+
+#### 1. Prerequisites
 - **Visual Studio 2022** with the **Desktop development with C++** workload.
 - **CMake 3.20+** (included with VS 2022 or installed globally).
 - **Qt 6** (MSVC 2022 64-bit).
 
 ---
 
-### 2. Installing Qt 6 for MSVC 2022
+#### 2. Installing Qt 6 for MSVC 2022
 
 If you do not have Qt 6 installed yet, the easiest and fastest way (without creating an account or downloading 40 GB) is via the included automated script:
 
@@ -156,9 +209,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install_qt.ps1 -QtVersion "6.
 
 ---
 
-### 3. Building with Visual Studio 2022 (MSVC)
+#### 3. Building with Visual Studio 2022 (MSVC)
 
-#### Option A: Using the PowerShell Build Script (Recommended)
+##### Option A: Using the PowerShell Build Script (Recommended)
 ```powershell
 # Configure, build with MSVC, and run unit tests:
 .\scripts\build_vs2022.ps1 -Config Debug -RunTests
@@ -167,7 +220,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install_qt.ps1 -QtVersion "6.
 .\scripts\build_vs2022.ps1 -OpenSolution
 ```
 
-#### Option B: Using CMake from the Command Line
+##### Option B: Using CMake from the Command Line
 ```powershell
 # 1. Configure for Visual Studio 2022 x64 (pass your Qt path if building GUI)
 cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.7.2/msvc2022_64"
@@ -179,7 +232,7 @@ cmake --build build --config Debug
 cd build; ctest -C Debug --output-on-failure
 ```
 
-#### Option C: Opening directly in Visual Studio 2022
+##### Option C: Opening directly in Visual Studio 2022
 1. Launch **Visual Studio 2022**.
 2. Select **File > Open > Folder...** and choose the `MATForge` directory.
 3. Visual Studio will automatically detect `CMakePresets.json` and configure using MSVC.

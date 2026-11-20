@@ -29,6 +29,13 @@ ui_*.h
 *.pdb
 *.ilk
 *.exp
+*.o
+*.a
+*.so
+*.dylib
+
+# Dependencies
+third_party/
 
 # Operating System files
 Thumbs.db

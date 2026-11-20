@@ -34,21 +34,34 @@ if(MSVC)
         /MP          # Multi-processor compilation
         /DNOMINMAX   # Prevent Windows.h from defining min and max macros
     )
+else()
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wno-unused-parameter
+    )
 endif()
 
-# Eigen 5.0.1 Integration (Header-only Linear Algebra)
-include(FetchContent)
-message(STATUS "--> Fetching Eigen 5.0.1...")
-FetchContent_Declare(
-    Eigen3
-    URL https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.zip
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_GetProperties(Eigen3)
-if(NOT eigen3_POPULATED)
-    FetchContent_Populate(Eigen3)
+# Eigen Integration (Header-only Linear Algebra)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen-5.0.1")
+    message(STATUS "--> Using local Eigen from third_party/eigen-5.0.1...")
     add_library(Eigen3::Eigen INTERFACE IMPORTED GLOBAL)
-    target_include_directories(Eigen3::Eigen INTERFACE ${eigen3_SOURCE_DIR})
+    target_include_directories(Eigen3::Eigen INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen-5.0.1")
+else()
+    include(FetchContent)
+    message(STATUS "--> Fetching Eigen 5.0.1...")
+    FetchContent_Declare(
+        Eigen3
+        URL https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_GetProperties(Eigen3)
+    if(NOT eigen3_POPULATED)
+        FetchContent_Populate(Eigen3)
+        add_library(Eigen3::Eigen INTERFACE IMPORTED GLOBAL)
+        target_include_directories(Eigen3::Eigen INTERFACE ${eigen3_SOURCE_DIR})
+    endif()
 endif()
 
 # Qt 6 Configuration for GUI
@@ -63,14 +76,25 @@ if(MATFORGE_BUILD_GUI)
         message(STATUS "--> Found Qt6 version: ${Qt6_VERSION}")
         message(STATUS "--> Qt6 Core directory: ${Qt6Core_DIR}")
     else()
-        message(WARNING 
-            "Qt6 was not found on your system.\n"
-            "   GUI application target 'matforge_app' will be skipped for now.\n"
-            "   The core math engine, parser, and CLI REPL ('matforge_cli') will still build.\n"
-            "   To enable the GUI:\n"
-            "     1. Run 'scripts/install_qt.ps1' (installs Qt 6 for MSVC via aqtinstall),\n"
-            "     2. Reconfigure CMake passing: -DCMAKE_PREFIX_PATH=\"C:/Qt/<version>/msvc2022_64\""
-        )
+        if(WIN32)
+            message(WARNING 
+                "Qt6 was not found on your system.\n"
+                "   GUI application target 'matforge_app' will be skipped for now.\n"
+                "   The core math engine, parser, and CLI REPL ('matforge_cli') will still build.\n"
+                "   To enable the GUI:\n"
+                "     1. Run 'scripts/install_qt.ps1' (installs Qt 6 for MSVC via aqtinstall),\n"
+                "     2. Reconfigure CMake passing: -DCMAKE_PREFIX_PATH=\"C:/Qt/<version>/msvc2022_64\""
+            )
+        else()
+            message(WARNING 
+                "Qt6 was not found on your system.\n"
+                "   GUI application target 'matforge_app' will be skipped for now.\n"
+                "   The core math engine, parser, and CLI REPL ('matforge_cli') will still build.\n"
+                "   To enable the GUI on Linux / WSL:\n"
+                "     1. Run 'sudo apt install qt6-base-dev libgl1-mesa-dev' (or ./scripts/install_qt_linux.sh),\n"
+                "     2. Or install via aqtinstall and pass -DCMAKE_PREFIX_PATH=\"~/Qt/<version>/gcc_64\""
+            )
+        endif()
         set(MATFORGE_BUILD_GUI OFF)
     endif()
 endif()

@@ -7,6 +7,50 @@
   },
   "configurePresets": [
     {
+      "name": "linux-debug",
+      "displayName": "Linux x64 Debug (Ninja)",
+      "description": "Target Linux / WSL with Ninja (x64 Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MATFORGE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux x64 Release (Ninja)",
+      "description": "Target Linux / WSL with Ninja (x64 Release)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MATFORGE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-make-debug",
+      "displayName": "Linux x64 Debug (Makefiles)",
+      "description": "Target Linux / WSL with Unix Makefiles (x64 Debug)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/linux-make-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MATFORGE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-make-release",
+      "displayName": "Linux x64 Release (Makefiles)",
+      "description": "Target Linux / WSL with Unix Makefiles (x64 Release)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/linux-make-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MATFORGE_BUILD_TESTS": "ON"
+      }
+    },
+    {
       "name": "vs2022-x64-debug",
       "displayName": "Visual Studio 2022 x64 Debug",
       "description": "Target Windows with Visual Studio 17 2022 (x64 Debug)",
@@ -35,6 +79,26 @@
   ],
   "buildPresets": [
     {
+      "name": "linux-debug",
+      "displayName": "Build Linux Debug (Ninja)",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Build Linux Release (Ninja)",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-make-debug",
+      "displayName": "Build Linux Debug (Makefiles)",
+      "configurePreset": "linux-make-debug"
+    },
+    {
+      "name": "linux-make-release",
+      "displayName": "Build Linux Release (Makefiles)",
+      "configurePreset": "linux-make-release"
+    },
+    {
       "name": "vs2022-x64-debug",
       "displayName": "Build VS2022 x64 Debug",
       "configurePreset": "vs2022-x64-debug",
@@ -49,6 +113,26 @@
   ],
   "testPresets": [
     {
+      "name": "linux-debug",
+      "displayName": "Test Linux Debug (Ninja)",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Test Linux Release (Ninja)",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-make-debug",
+      "displayName": "Test Linux Debug (Makefiles)",
+      "configurePreset": "linux-make-debug"
+    },
+    {
+      "name": "linux-make-release",
+      "displayName": "Test Linux Release (Makefiles)",
+      "configurePreset": "linux-make-release"
+    },
+    {
       "name": "vs2022-x64-debug",
       "displayName": "Test VS2022 x64 Debug",
       "configurePreset": "vs2022-x64-debug",
@@ -56,4 +140,3 @@
     }
   ]
 }
-
